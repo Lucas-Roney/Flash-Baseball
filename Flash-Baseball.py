@@ -172,7 +172,7 @@ WIND_UP_TIME = 0.9               # the pitcher's windup: settle, leg kick, strid
 PITCH_FOLLOW_TIME = 0.25         # seconds the pitcher's arm takes to carry through after the release
 RELEASE_BLEND = 0.18             # first part of the pitch's flight (0-1) during which the ball travels from his hand onto its path
 DUGOUT_WALK_SPEED = 85           # pixels per second: how fast a batter who made an out walks back to the dugout
-DUGOUTS = {"left": (150, 672), "right": (1130, 672)}   # where he heads (the nearer one); he disappears inside when he arrives
+DUGOUTS = {"left": (150, 672), "right": (1130, 672)}   # the home dugout is the left one: batters who make an out walk there and disappear inside
 LOC_NAMES = ["inside", "middle", "outside"]      # zone -1 / 0 / +1
 ZONE_WEIGHTS = (25, 50, 25)                      # normal chance of inside / middle / outside
 CHANGEUP_HOT_START = 1.9                         # bigger = the changeup looks faster out of the hand (and slower at the end)
@@ -197,7 +197,7 @@ SEAM_LEGEND_TEXT = {"Fastball": "seams UP = fastball", "Curveball": "seams DOWN 
 
 # --- Timing windows (seconds away from the perfect swing; smaller = harder) ---
 # These are the MEDIUM values; the difficulty's "window" number scales all of them.
-PERFECT_PERFECT_WINDOW = 0.009   # guaranteed home run (about one frame wide at 60 FPS - very tight!)
+PERFECT_PERFECT_WINDOW = 0.007   # guaranteed home run (about one frame wide at 60 FPS - very tight!)
 PERFECT_WINDOW = 0.03
 GOOD_WINDOW = 0.08
 CONTACT_WINDOW = 0.16            # inside this you make contact
@@ -227,28 +227,29 @@ HIT_INFO = {
 }
 
 # --- Fielding ----------------------------------------------------------------
-FIELDER_SPEED = 80              # pixels per second (smaller = slower fielders = easier extra bases)
-FIELDER_REACTION = 0.9          # seconds a fielder takes to read a fly ball before he starts moving
+BALL_SPEED = 1.2                 # balls in play travel this much faster than the HIT_INFO flight times (1.0 = original; home runs unchanged)
+FIELDER_SPEED = 50              # pixels per second (smaller = slower fielders = easier extra bases)
+FIELDER_REACTION = 0.7          # seconds a fielder takes to read a fly ball before he starts moving
 FIELDER_MISJUDGE = 35            # a fielder runs to where he THINKS a fly ball will land: off by up to this many pixels
 # CATCH CIRCLE: when a fly ball lands, it is caught if it comes down inside this many pixels of the fielder.
 # Worse contact = bigger circle = more likely to be an out. Anything outside the circle falls in for a hit.
 CATCH_RADIUS = {"perfect": 20, "good": 34, "weak": 50}
 FIELDER_PICKUP_TIME = 0.5        # seconds a fielder takes to gather a loose ball before throwing
 RELAY_TIME = 0.25                # seconds to catch a throw and throw it on (a quick relay)
-THROW_SPEED = 450                # pixels per second
-BAG_RADIUS = 45                  # a fielder this close to a bag, holding the ball, "is at the base"
+THROW_SPEED = 500                # pixels per second
+BAG_RADIUS = 20                  # a fielder this close to a bag, holding the ball, "is at the base"
 DEAD_BALL_DELAY = 0.6            # pitcher has the ball and nobody is running -> play ends after this
 CUTOFF_MIN_THROW = 330           # outfield throws longer than this go through a cutoff man (SS or 2B)
 BACKUP_DISTANCE = 55             # a backup fielder stands this far behind where the ball lands
 
 # --- Catch / landing effects (so a fly out looks different from a hit that falls in) ---
-HIT_ROLL_SPEED = 150             # how fast a ball that falls in keeps rolling after it lands (pixels/second)
-GROUNDER_ROLL_SPEED = 70         # same, for ground balls
+HIT_ROLL_SPEED = 190             # how fast a ball that falls in keeps rolling after it lands (pixels/second)
+GROUNDER_ROLL_SPEED = 90         # same, for ground balls
 ROLL_DRAG = 1.8                  # bigger = the ball stops rolling sooner
 CATCH_FX_TIME = 1.2              # seconds the white "CAUGHT!" effect lasts
 
 # --- Baserunning -------------------------------------------------------------
-RUNNER_SPEED = 1.1               # bases per second
+RUNNER_SPEED = 0.6               # bases per second
 BATTER_START_DELAY = 0.75        # the batter finishes his swing, drops the bat and gets going (bigger = easier to throw him out at first)
 RUNNER_START_DELAY = 0.2         # reaction time after contact before runners ALREADY on base take off
 SLIDE_RANGE = 0.45               # when closer than this (in bases) to the bag, the button says SLIDE
@@ -581,6 +582,8 @@ def draw_person(surf, x, y, scale=1.0, body=(40, 60, 120), cap=(30, 40, 90), sli
     if sliding:
         pygame.draw.ellipse(surf, body, (x - 15 * s, y - 11 * s, 30 * s, 11 * s))
         pygame.draw.circle(surf, skin, (x + 14 * s, y - 8 * s), 5 * s)
+        pygame.draw.circle(surf, cap, (x + 14 * s, y - 9.5 * s), 5.5 * s, draw_top_left=True, draw_top_right=True)    # helmet stays on
+        pygame.draw.line(surf, cap, (x + 16 * s, y - 9 * s), (x + 21 * s, y - 8 * s), max(1, int(2 * s)))             # brim, pointing where he slides
         return
     top = y - bob                                                  # the body lifts off the ground a touch with each step
     pygame.draw.ellipse(surf, body, (x - 6 * s + sway * 0.5 * s, top - 26 * s, 12 * s, 26 * s))
@@ -1980,6 +1983,8 @@ class Game:
             return
         if self.state == "GAME_OVER":
             self.quit_to_menu = True                         # back to the start screen
+        elif self.state == "FIELD_PLAY":
+            self.action_return()                             # SPACE while running: back to the previous base
         elif self.state == "PITCH" and not self.pitch.swung:
             self.swing()
         elif self.state == "HR_CUTSCENE" and self.state_time > 0.8:
@@ -2172,7 +2177,7 @@ class Game:
         sideways = clamp(raw_error * 1500 + (random.random() - 0.5) * 120, -300, 300)   # early = left, late = right
         if kind == "HR":
             sideways = clamp(sideways + random.uniform(-110, 110), -300, 300)          # homers spray around the stands
-        self.hit = Hit(kind, quality, x, y, sideways, info["flight"], info["arc"])
+        self.hit = Hit(kind, quality, x, y, sideways, info["flight"] if kind == "HR" else info["flight"] / BALL_SPEED, info["arc"])
         self.hit.broken_bat = quality == "weak" and random.random() < BROKEN_BAT_CHANCE     # rare animation roll
         self.fan = None
         self.board_hit = False
@@ -2206,6 +2211,8 @@ class Game:
         hit.land_x, hit.land_y = landing_spot(hit.kind, hit.sideways)
         fielders = [Fielder(name, post, post[0], post[1]) for name, post in FIELDER_POSTS.items()]
         index = {f.name: i for i, f in enumerate(fielders)}
+        for f in fielders:
+            f.home, f.job = f.post, ""                          # where he normally stands / what he is busy doing
         # the closest fielder (not the catcher) chases the ball
         chaser = min((i for i, f in enumerate(fielders) if f.name != "C"),
                      key=lambda i: math.hypot(fielders[i].x - hit.land_x, fielders[i].y - hit.land_y))
@@ -2239,7 +2246,8 @@ class Game:
         for i, on_base in enumerate(self.bases):
             if on_base:
                 end = min(4, i + 1 + advance[i])
-                others.append(dict(start=i + 1, end=end, pos=float(i + 1), skin=on_base))     # on_base holds his skin tone
+                others.append(dict(start=i + 1, end=end, pos=float(i + 1), skin=on_base, target=end, forward=True, moving=end > i + 1,
+                                   auto=True, out=False, scored=False, origin=i + 1))     # on_base holds his skin tone
                 if end >= 4: runs += 1
                 else: new_bases[end - 1] = on_base
 
@@ -2255,8 +2263,8 @@ class Game:
             others_f = [f for i, f in enumerate(fielders) if i != chaser and f.name not in ("C", "P")]
             backup = min(others_f, key=lambda f: math.hypot(f.x - hit.land_x, f.y - hit.land_y))
             ux, uy = unit(hit.land_x - HOME[0], hit.land_y - HOME[1])
-            backup.post = (clamp(hit.land_x + ux * BACKUP_DISTANCE, 60, 1220), clamp(hit.land_y + uy * BACKUP_DISTANCE, 255, 700))
-            fielders[index["P"]].post = (HOME[0], HOME[1] - 60)
+            backup.post = backup.home = (clamp(hit.land_x + ux * BACKUP_DISTANCE, 60, 1220), clamp(hit.land_y + uy * BACKUP_DISTANCE, 255, 700))
+            fielders[index["P"]].post = fielders[index["P"]].home = (HOME[0], HOME[1] - 60)
         self.set_view("field")
         self.set_state("FIELD_PLAY")
 
@@ -2264,26 +2272,113 @@ class Game:
     def update_field_play(self, dt):
         fp = self.fp
         fp.time += dt
-        for other in fp.others:                              # other runners jog to their new bases
-            if fp.time > RUNNER_START_DELAY:
-                other["pos"] = min(other["end"], other["pos"] + RUNNER_SPEED * dt)
+        self.update_others(dt)
         if fp.pending:
-            fp.pending_time -= dt
-            if fp.pending_time <= 0:
-                self.finish_field_play(*fp.pending)
-                return
+            if not self.others_moving():                     # (the play isn't over while a runner is still running)
+                fp.pending_time -= dt
+                if fp.pending_time <= 0:
+                    self.finish_field_play(*fp.pending)
+                    return
         else:
             self.update_runner(dt)
         self.update_ball(dt)
+        self.update_cover()
         self.update_fielders(dt)
         self.update_rare(dt)
         self.update_gait(dt)
         self.age_dust(dt)
-        if not fp.pending:
+        if not fp.pending or self.others_moving():
             self.fielder_ai()
+        if not fp.pending:
             self.check_dead_ball(dt)
             if fp.time > FIELD_PLAY_TIMEOUT:
                 self.decide_standing()
+
+    # ---- the other runners (the ones who were already on base) -------------------------------------
+    def others_moving(self):
+        return any(o["moving"] for o in self.fp.others if not o["out"] and not o["scored"])
+
+    def live_bases(self):
+        """The bases runners are running toward right now: the batter-runner, plus anyone sent ahead of him."""
+        fp = self.fp
+        bases = [fp.runner.target] if fp.runner.moving else []
+        return bases + [o["target"] for o in fp.others if o["moving"] and not o["auto"] and not o["out"] and not o["scored"]]
+
+    def other_on(self, base):
+        """The other runner who is on (or heading for) this base, if any."""
+        for o in self.fp.others:
+            if not o["out"] and not o["scored"] and (o["target"] if o["moving"] else round(o["pos"])) == base:
+                return o
+        return None
+
+    def push_lead_runners(self, base):
+        """The batter-runner is leaving `base` for the next one: a runner standing on that next base must go one base ahead,
+        and so on down the line. (They run on their own: you only control the batter-runner.)"""
+        chain, k = [], base + 1
+        while k <= 3:                                        # first find everybody in the chain (before anyone moves)...
+            o = self.other_on(k)
+            if not o:
+                break
+            chain.append((k, o))
+            k += 1
+        for k, o in chain:                                   # ...then send them all one base ahead
+            o.update(target=k + 1, forward=True, moving=True, auto=False, origin=k)
+
+    def update_others(self, dt):
+        for o in self.fp.others:
+            if o["out"] or o["scored"] or not o["moving"]:
+                continue
+            if o["auto"] and self.fp.time <= RUNNER_START_DELAY:
+                continue
+            step = RUNNER_SPEED * dt
+            o["pos"] = min(o["pos"] + step, o["target"]) if o["forward"] else max(o["pos"] - step, o["target"])
+            if o["pos"] == o["target"]:
+                self.other_arrives(o)
+
+    def other_arrives(self, o):
+        base = o["target"]
+        o["pos"] = float(base)
+        if not o["auto"] and self.ball_at_base(base):        # the ball beat him to the bag (he reached it first, THEN he is out)
+            o["moving"], o["out"] = False, True
+        elif base >= 4 and o["forward"]:
+            o["moving"], o["scored"] = False, True
+        else:
+            o["moving"], o["end"] = False, base
+
+    def pick_chaser(self):
+        """A loose ball: whoever is CLOSEST to it goes after it (not just the man who first went for it)."""
+        fp, ball = self.fp, self.fp.ball
+        dist = lambda i: math.hypot(fp.fielders[i].x - ball.x, fp.fielders[i].y - ball.y)
+        nearest = min((i for i, f in enumerate(fp.fielders) if f.name != "C"), key=dist)
+        if nearest != fp.chaser and dist(nearest) < dist(fp.chaser) - 20:
+            fp.chaser = nearest
+            fp.fielders[nearest].job = ""
+
+    def update_cover(self):
+        """Fielders who are not busy (going after the ball, holding it, or catching a throw) COVER BAGS:
+        1B takes first (unless the ball was hit to him: then the pitcher does), 2B or SS second, 3B third, the catcher home.
+        Anybody left over goes back to his normal spot."""
+        fp, ball = self.fp, self.fp.ball
+        chasing = fp.chaser if ball.mode in ("flying", "loose") else -1
+        free = {}
+        for i, f in enumerate(fp.fielders):
+            busy = (i == chasing or f.job or (ball.mode == "held" and i == ball.holder)
+                    or (ball.mode == "thrown" and i == ball.receiver))
+            if not busy:
+                free[f.name] = i
+        priority = {1: ("1B", "P", "2B"), 2: ("2B", "SS", "CF"), 3: ("3B", "SS", "P"), 4: ("C", "P")}
+        taken = set()
+        for base in (1, 2, 3, 4):
+            for name in priority[base]:
+                i = free.get(name)
+                if i is not None and i not in taken:
+                    taken.add(i)
+                    fp.fielders[i].post = BASES[base]
+                    break
+        for name, i in free.items():
+            f = fp.fielders[i]
+            if i not in taken and f.post in BASES:
+                f.post = f.home
 
     def decide(self, outcome, base, delay):
         """The play is decided; wait `delay` seconds so the player can see it, then show the result."""
@@ -2317,7 +2412,8 @@ class Game:
         if base >= 4:
             return self.decide("score", 4, 0.5)
         if r.forward and (base < r.earned or (r.run_through and self.can_continue_from(base) and not r.sliding)):
-            r.target, r.run_through = base + 1, False        # keep running (earned bases / run-through)
+            r.target, r.run_through = base + 1, False
+            self.push_lead_runners(base)        # keep running (earned bases / run-through)
             return
         r.moving, r.run_through = False, False               # stop on the bag
         if r.sliding:
@@ -2357,6 +2453,7 @@ class Game:
             ball.x = clamp(ball.x + ball.vx * dt, 40, 1240)
             ball.y = clamp(ball.y + ball.vy * dt, 255, 700)
             ball.z = abs(math.sin(ball.bt * 9)) * 14 * math.exp(-3 * ball.bt) if hit.arc > 0 else 0
+            self.pick_chaser()                               # the nearest fielder to the ball goes for it
             chaser = fp.fielders[fp.chaser]
             if math.hypot(chaser.x - ball.x, chaser.y - ball.y) < 14:
                 ball.mode, ball.holder, ball.hold_time, ball.quick = "held", fp.chaser, 0.0, False
@@ -2432,7 +2529,7 @@ class Game:
         fp.runner.sliding = False                            # (no more sliding on the ground once he is out)
         fp.runner.moving = False
         sx, sy = point_on_path(fp.runner.pos)
-        tx, ty = DUGOUTS["right"] if sx > HOME[0] + 20 else DUGOUTS["left"]
+        tx, ty = DUGOUTS["left"]                             # always the home (third-base side) dugout
         fp.walk = dict(sx=sx, sy=sy, tx=tx, ty=ty, t=0.0, dist=max(1.0, math.hypot(tx - sx, ty - sy)), done=False)
 
     def update_walk(self, dt):
@@ -2543,28 +2640,31 @@ class Game:
 
     def fielder_ai(self):
         """The fielder holding the ball decides what to do with it.
-        If the runner is heading for a bag, the ball goes to whoever is CLOSEST to that bag (never to an empty bag),
-        and that fielder runs to the bag with it to get the runner out. If the holder is the closest, he runs it himself."""
-        fp, ball, runner = self.fp, self.fp.ball, self.fp.runner
+        He throws to the LEAD runner's base (the furthest-ahead runner who is still running), to whoever is closest to that bag
+        (never to an empty bag); that fielder runs to the bag with it. If the holder is the closest, he runs it himself."""
+        fp, ball = self.fp, self.fp.ball
         if ball.mode != "held" or ball.hold_time < (RELAY_TIME if ball.quick else FIELDER_PICKUP_TIME):
             return
         if fp.dive and fp.dive["idx"] == ball.holder:
             return                                           # still on the ground after the dive
         holder = fp.fielders[ball.holder]
-        if runner.moving:
-            base = runner.target
-            if self.ball_at_base(base):
-                return                                       # already waiting for him at the bag
+        live = self.live_bases()
+        if live:
+            open_bases = [b for b in live if not self.ball_at_base(b)]
+            if not open_bases:
+                return                                       # a fielder is already waiting with the ball at every bag
+            base = max(open_bases)                           # the lead runner's base comes first
             bag = BASES[base]
             if holder.post == bag:
                 return                                       # he is already carrying it to the bag
+
             def closeness(i):                                # distance to the bag; outfielders count as farther (they don't cover bags)
                 f = fp.fielders[i]
                 weight = 1.5 if f.name in ("LF", "CF", "RF") else 0.85 if f.name == BASE_FIELDERS[base] else 1.0
                 return math.hypot(f.x - bag[0], f.y - bag[1]) * weight
             nearest = min(range(len(fp.fielders)), key=closeness)
             if nearest == ball.holder:
-                holder.post = bag                            # he is the closest one: run it to the bag himself
+                holder.post, holder.job = bag, "busy"        # he is the closest one: run it to the bag himself
                 return
             if holder.name in ("LF", "CF", "RF") and math.hypot(holder.x - bag[0], holder.y - bag[1]) > CUTOFF_MIN_THROW:
                 cutoff = fp.index["SS" if holder.x < 640 else "2B"]      # long throw: hit the cutoff man halfway
@@ -2581,7 +2681,9 @@ class Game:
         fp = self.fp
         ball, thrower = fp.ball, fp.fielders[fp.ball.holder]
         r = fp.fielders[receiver]
-        r.post = post
+        for f in fp.fielders:
+            f.job = ""                                       # everybody is free to be reassigned...
+        r.post, r.job = post, "busy"                         # ...except the man catching this throw
         speed = FIELDER_SPEED * (1.0 if post in BASES else 0.8)     # a fielder running to a bag runs flat out
         dx, dy = post[0] - r.x, post[1] - r.y
         run = math.hypot(dx, dy)
@@ -2600,7 +2702,7 @@ class Game:
     def check_dead_ball(self, dt):
         """Pitcher has the ball and the runner is standing on a bag: the play is over."""
         fp = self.fp
-        if self.pitcher_has_ball() and not fp.runner.moving and fp.ball.hold_time >= FIELDER_PICKUP_TIME:
+        if self.pitcher_has_ball() and not self.live_bases() and fp.ball.hold_time >= FIELDER_PICKUP_TIME:
             fp.dead_time += dt
             if fp.dead_time >= DEAD_BALL_DELAY:
                 self.decide_standing()
@@ -2610,7 +2712,7 @@ class Game:
     # ---- runner actions (what the buttons do) ----------------------------------
     def can_continue_from(self, base):
         """Can a runner on/at `base` go on to the next one? (not home, and the next bag is free)"""
-        return base < 4 and (base == 3 or not self.fp.new_bases[base])
+        return base < 4                                      # runners ahead of him get pushed on ahead
 
     def can_send(self):
         fp = self.fp
@@ -2623,6 +2725,7 @@ class Game:
             r = self.fp.runner
             r.target, r.forward, r.moving = round(r.pos) + 1, True, True
             r.pos, r.wait, r.run_through = float(round(r.pos)), 0.0, False
+            self.push_lead_runners(int(r.pos))               # the runner on the next base goes one base ahead (and so on)
             r.turn_cooldown = TURN_COOLDOWN                  # can't be turned around instantly
 
     def action_slide(self):
@@ -2630,7 +2733,8 @@ class Game:
             self.fp.runner.sliding = True
 
     def action_turn(self):
-        """Click the runner mid-run: he reverses direction (after a short cooldown)."""
+        """Click the runner mid-run: he reverses direction (after a short cooldown) and so do the runners who were sent ahead
+        of him. Nobody can turn back while running to first."""
         fp = self.fp
         r = fp.runner
         if fp.pending or not r.moving or r.sliding or r.turn_cooldown > 0 or r.wait > 0:
@@ -2639,10 +2743,21 @@ class Game:
             if r.target <= max(r.earned, 1):                 # can't turn back toward home or during the guaranteed part
                 return
             r.target, r.forward = r.target - 1, False
+            for o in fp.others:                              # the runners sent ahead of him go back to where they were
+                if o["moving"] and not o["auto"] and o["forward"]:
+                    o["target"], o["forward"] = o["origin"], False
         else:
             r.target, r.forward = r.target + 1, True
+            for o in fp.others:                              # ...and go again if he changes his mind
+                if o["moving"] and not o["auto"] and not o["forward"]:
+                    o["target"], o["forward"] = o["origin"] + 1, True
         r.run_through = False
         r.turn_cooldown = TURN_COOLDOWN
+
+    def action_return(self):
+        """SPACE while running: go back to the previous base (everyone sent ahead of you goes back too)."""
+        if self.fp.runner.forward:
+            self.action_turn()
 
     def field_button(self):
         """(label, x, y) of the on-screen button right now, or None."""
@@ -2660,9 +2775,18 @@ class Game:
     # ---- ending a play -------------------------------------------------------
     def finish_field_play(self, outcome, base):
         fp = self.fp
-        runs, new_bases = fp.others_runs, fp.new_bases[:]
-        for other in fp.others:
-            other["pos"] = other["end"]
+        runs, new_bases, extra_outs = 0, [0, 0, 0], 0
+        for other in fp.others:                              # the other runners: scored, forced out, or standing on a base
+            if other["moving"]:
+                other["pos"], other["moving"] = float(other["target"]), False
+                other["scored"] = other["scored"] or other["target"] >= 4
+            if other["scored"]:
+                runs += 1
+            elif other["out"]:
+                extra_outs += 1
+            else:
+                new_bases[min(3, max(1, round(other["pos"]))) - 1] = other["skin"]
+        self.outs += extra_outs                              # force outs on the runners ahead of him count
         self.end_at_bat()
         third_out = False
         if outcome in ("out", "flyout", "norun"):
@@ -2677,6 +2801,8 @@ class Game:
         else:
             new_bases[base - 1] = fp.skin or 1                 # the batter stays on base with his own skin tone
             self.stats["hits"] += 1
+        if self.outs >= OUTS_PER_INNING and not third_out:     # the third out came from a runner ahead of him
+            runs, new_bases, third_out = 0, [0, 0, 0], True
         self.runs += runs
         self.bases = new_bases
         if outcome in ("out", "flyout", "norun"):
@@ -2696,6 +2822,8 @@ class Game:
             big = {1: "SINGLE", 2: "DOUBLE", 3: "TRIPLE"}[base]
             if base == 1 and fp.hit.kind == "GROUND_OUT":
                 big = "INFIELD SINGLE"
+        if extra_outs:
+            big += "  |  RUNNER OUT"
         small = "Side retired" if third_out else score_text or ("Never ran to first" if outcome == "norun" else "")
         self.show_message(big, small, then=self.end_inning if third_out else None, wait=True)
 
@@ -3309,7 +3437,7 @@ class Game:
             if button:                                                    # the RUN / SLIDE circle sits on the ground, under his feet
                 draw_button(surf, button[1], button[2], button[0], SLIDE_GREEN if button[0] == "Slide" else TEAL)
             for n, other in enumerate(fp.others):
-                if other["pos"] < 4:
+                if other["pos"] < 4 and not other["scored"] and not (other["out"] and self.state == "MESSAGE"):
                     x, y = point_on_path(other["pos"])
                     sway, bob = self.gait(("o", n))
                     people.append((y, lambda x=x, y=y, sk=other["skin"], sw=sway, bo=bob: draw_person(
@@ -3428,7 +3556,7 @@ class Game:
         while score_size > 12 and get_font(score_size).size(score_line)[0] > 330:     # shrink to fit the box
             score_size -= 1
         draw_text(surf, score_line, 640, 64, score_size, (232, 232, 232), outline=False)
-        draw_text(surf, "RUN button / R: go to next base   S: slide   click runner: turn back", 12, 24, 15, WHITE, align="left")
+        draw_text(surf, "RUN button / R: next base   S: slide   click runner or SPACE: turn back", 12, 24, 15, WHITE, align="left")
         if self.state == "MESSAGE":
             draw_text(surf, self.message, 640, 140, 56)
             if self.sub_message:
