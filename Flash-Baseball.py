@@ -3814,11 +3814,11 @@ class Game:
         st = self.stats
         left = [("Hits", st["hits"]), ("Home runs", st["hr"]), ("Perfect swings", st["perfect"])]
         right = [("Strikeouts", st["k"]), ("Walks", st["bb"]), ("Stolen bases", f"{st['steals']}/{st['steal_att']}")]
-        draw_text(surf, "YOUR STATS", 640, 392, 20, GOLD)
+        draw_text(surf, "YOUR STATS", 620, 392, 20, GOLD)
         for i, (label, value) in enumerate(left):
-            draw_text(surf, f"{label}: {value}", 470, 436 + i * 36, 22, align="left")
+            draw_text(surf, f"{label}: {value}", 420, 436 + i * 36, 22, align="left")
         for i, (label, value) in enumerate(right):
-            draw_text(surf, f"{label}: {value}", 790, 436 + i * 36, 22, align="left")
+            draw_text(surf, f"{label}: {value}", 740, 436 + i * 36, 22, align="left")
         draw_text(surf, "Longest HR: " + (f"{st['long_hr']} ft" if st["long_hr"] else "-") + f"   Best hot streak: {st['best_streak']}"
                   + f"   Errors: {st['errors']}  DP: {st['dp']}  SF: {st['sf']}  Robbed: {st['robbed']}", 640, 600, 14, (210, 215, 235))
         self.draw_spray_chart(surf, 20, 396, 330, 190)
