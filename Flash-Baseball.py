@@ -43,6 +43,9 @@ RARE ANIMATIONS (each has its own chance in the settings - see DIVE_CHANCE etc.)
   Fan catch .......... a (tiny) fan in the stands catches a home run
   Scoreboard hit ..... a home run over the scoreboard rocks it and makes it flicker
   Slugger cutscene ... a PERFECT PERFECT swing
+  Robbed at the wall . an outfielder leaps and steals a short home run
+  Bat flip ........... a really long home run gets the bat flipped
+  On fire ............ a hot streak sets the batter's box ablaze
   Pause (P) > Animations lets you watch every one of them on demand.
 
 CONTROLS
@@ -172,6 +175,36 @@ WIND_UP_TIME = 0.9               # the pitcher's windup: settle, leg kick, strid
 PITCH_FOLLOW_TIME = 0.25         # seconds the pitcher's arm takes to carry through after the release
 RELEASE_BLEND = 0.18             # first part of the pitch's flight (0-1) during which the ball travels from his hand onto its path
 DUGOUT_WALK_SPEED = 85           # pixels per second: how fast a batter who made an out walks back to the dugout
+# --- New in this version: batting order, pitcher fatigue, baserunning smarts, weather ----------------------------
+# (name, jersey number, power, contact, speed): power > 1 = more extra-base hits / homers, contact > 1 = a bigger hit window,
+# speed > 1 = he runs to first faster.  The batting order loops: 1 through 9, then back to 1.
+LINEUP = [("J. Alvarez", 7, 1.00, 1.06, 1.18), ("M. Chen", 12, 0.94, 1.10, 1.12), ("D. Brooks", 24, 1.10, 1.07, 0.96),
+          ("T. Okafor", 44, 1.26, 0.92, 0.84), ("R. Santos", 9, 1.18, 0.96, 0.90), ("K. Nakamura", 31, 1.00, 1.02, 1.00),
+          ("L. Murphy", 18, 0.90, 1.00, 1.06), ("P. Dubois", 5, 0.86, 1.05, 1.12), ("S. Kowalski", 2, 0.82, 0.96, 0.95)]
+# bat trade-offs: (power, hit window). A heavy dark bat hits it farther, a light blonde bat is easier to time.
+BAT_TRAITS = {"Natural": (1.00, 1.00), "Blonde": (0.92, 1.07), "Black": (1.10, 0.95), "Cherry": (1.12, 0.93),
+              "Red": (1.05, 0.98), "Two-Tone": (1.00, 1.03), "Driftwood": (0.95, 1.05), "Navy": (1.06, 0.97)}
+POWER_UPGRADE = 1.1              # how strongly (power - 1) turns singles into doubles / doubles into homers (and the reverse)
+ON_FIRE_STREAK = 3               # this many good swings in a row and the batter is ON FIRE...
+ON_FIRE_CONTACT = 1.08           # ...which makes the hit window this much bigger until he has a bad swing
+FATIGUE_START = 35               # after this many pitches the pitcher starts to tire...
+FATIGUE_SPAN = 40                # ...and is completely gassed this many pitches later
+FATIGUE_SLOWDOWN = 0.10          # a gassed pitcher throws this much slower
+TAG_DELAY = 0.25                 # a runner tagging up waits for the catch, then takes off after this long
+TAG_SPEED_MULT = 2.4             # a tagging runner sprints (RUNNER_SPEED is slow for jogging around the bases)
+TAG_RISK = 0.30                  # runners go on a fly ball if they think they beat the throw by this much (or less)
+FORCE_RUN_MULT = 1.35            # runners forced to run on a ground ball (double play chances) get a quick start
+FIELD_ERROR_CHANCE = 0.06        # a ground ball is bobbled (once per play)
+THROW_ERROR_CHANCE = 0.04        # a throw to a base is wild (once per play)
+ROB_CHANCE = 0.14                # a SHORT homer (under ROB_MAX_FT) is robbed at the wall
+ROB_MAX_FT = 400
+ROB_FEET_Y, ROB_JUMP, ROB_END_Y = 146, 22, 92     # batting view: where the robber stands, how high he jumps, where the ball ends up
+FLIP_MIN_FT = 420                # a homer this long gets a bat flip...
+FLIP_CHANCE = 0.9
+FLIP_START = 0.34                # seconds into the swing when the bat leaves his hands
+WEATHER_WEIGHTS = [("Clear", 38), ("Night", 26), ("Rain", 16), ("Windy", 20)]
+STRETCH_INNING = 7               # the seventh-inning stretch happens after this inning (if the game is that long)
+
 DUGOUTS = {"left": (150, 672), "right": (1130, 672)}   # the home dugout is the left one: batters who make an out walk there and disappear inside
 LOC_NAMES = ["inside", "middle", "outside"]      # zone -1 / 0 / +1
 ZONE_WEIGHTS = (25, 50, 25)                      # normal chance of inside / middle / outside
@@ -302,6 +335,9 @@ ANIMATIONS = [
     ("Broken Bat", f"Weak contact: {round(BROKEN_BAT_CHANCE * 100)}% chance", 2.4),
     ("Fan Catch", f"Home runs into the seats: {round(FAN_CATCH_CHANCE * 100)}% chance", 3.0),
     ("Scoreboard Hit", f"Home runs over the scoreboard: {round(BOARD_HIT_CHANCE * 100)}% chance", 4.4),
+    ("Robbed at the Wall", f"Short homers (under {ROB_MAX_FT} ft): {round(ROB_CHANCE * 100)}% chance", 3.8),
+    ("Bat Flip", f"Moonshots ({FLIP_MIN_FT}+ ft): {round(FLIP_CHANCE * 100)}% chance", 3.6),
+    ("On Fire", f"{ON_FIRE_STREAK} good swings in a row = a bigger hit window", 3.4),
 ]
 
 # --- Field geometry (canvas pixels) ------------------------------------------
@@ -363,6 +399,8 @@ class Hit:
     read_y: float = 0.0
     catch_x: float = 0.0       # if caught: where the fielder is standing when it arrives
     catch_y: float = 0.0
+    robbed: bool = False       # a short homer an outfielder leaps and steals at the wall
+    flip: bool = False         # a long homer: the batter flips his bat
 
 
 @dataclass
@@ -440,6 +478,10 @@ class FieldPlay:
     moving: set = field(default_factory=set)      # who is moving right now
     dust: list = field(default_factory=list)      # dust / grass particles under running feet
     walk: dict = None          # after an out: the batter walking back to the dugout (sx, sy, tx, ty, t, done)
+    error: bool = False        # a fielder booted the ball or threw it away
+    error_done: bool = False   # (only one bobble per play)
+    throw_error_done: bool = False
+    error_fx: dict = None      # the "ERROR!" label: t (seconds), x, y
 
 
 # =============================================================================
@@ -893,6 +935,81 @@ def draw_bat_scoreboard(surf, game):
                              (385 + r1 * math.cos(a), 68 + r1 * math.sin(a) * 0.6), 2)
 
 
+def pips(value):
+    """1 to 5 pips for a trait value (0.8 = weak ... 1.25 = elite)."""
+    return int(clamp(round((value - 0.78) / 0.11) + 1, 1, 5))
+
+
+def draw_batter_card(surf, game):
+    """A little scorecard for the batter at the plate: name, number, today's line and his three ratings."""
+    b = game.lineup[game.batter_i]
+    x, y, w, h = 6, 322, 200, 62
+    panel = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.rect(panel, (8, 12, 28, 200), (0, 0, w, h), border_radius=8)
+    pygame.draw.rect(panel, (255, 255, 255, 80), (0, 0, w, h), 1, border_radius=8)
+    surf.blit(panel, (x, y))
+    if not b["ab"]:
+        avg = "---"
+    else:
+        avg = "1.000" if b["h"] >= b["ab"] else f".{int(1000 * b['h'] / b['ab']):03d}"
+    draw_text(surf, f"#{b['num']}  {b['name'].upper()}", x + 8, y + 16, 11, GOLD, align="left")
+    bat = CURRENT_BAT
+    pygame.draw.rect(surf, bat["body"], (x + w - 50, y + 8, 40, 5), border_radius=2)
+    pygame.draw.rect(surf, bat["handle"] or bat["body"], (x + w - 50, y + 8, 12, 5), border_radius=2)
+    draw_text(surf, f"{b['h']}-{b['ab']}   AVG {avg}   HR {b['hr']}", x + 8, y + 31, 10, WHITE, align="left")
+    for i, (label, value) in enumerate((("PWR", b["power"] * bat["power"]), ("CON", b["contact"] * bat["window"]), ("SPD", b["speed"]))):
+        px = x + 8 + i * 64
+        draw_text(surf, label, px, y + 50, 9, (200, 205, 225), outline=False, align="left")
+        for k in range(5):
+            pygame.draw.rect(surf, GOLD if k < pips(value) else (70, 76, 98), (px + 24 + k * 7, y + 43, 5, 7))
+
+
+def draw_fire_aura(surf, t):
+    """Flames licking up around a batter who is ON FIRE."""
+    glow = pygame.Surface((150, 170), pygame.SRCALPHA)
+    pygame.draw.ellipse(glow, (255, 120, 30, 50 + int(20 * math.sin(t * 9))), (0, 20, 150, 150))
+    surf.blit(glow, (240, 240))
+    for i in range(14):
+        a = i / 14 * math.tau
+        base_x = 315 + math.cos(a) * 46
+        base_y = 330 + math.sin(a) * 56
+        h = 16 + 12 * abs(math.sin(t * 8 + i * 1.7))
+        sway = math.sin(t * 6 + i) * 3
+        pygame.draw.polygon(surf, (255, 110, 20), [(base_x - 6, base_y), (base_x + sway, base_y - h), (base_x + 6, base_y)])
+        pygame.draw.polygon(surf, (255, 220, 80), [(base_x - 3, base_y), (base_x + sway * 0.6, base_y - h * 0.6), (base_x + 3, base_y)])
+
+
+def draw_flipped_bat(surf, t):
+    """The bat after a bat flip: it sails up and away, lands, hops once and lies there. t = seconds since he let go."""
+    ox, oy, vx, vy0, g, ground = 298.0, 252.0, -95.0, -235.0, 560.0, 374.0
+    t_land = (-vy0 + math.sqrt(vy0 * vy0 + 2 * g * (ground - oy))) / g
+    spin = 15.0
+    if t < t_land:
+        x, y, ang = ox + vx * t, oy + vy0 * t + 0.5 * g * t * t, 1.0 + spin * t
+    else:
+        s = t - t_land
+        hop = max(0.0, 70 * s * 4 * (1 - s * 4)) if s < 0.25 else 0.0              # one small hop
+        x = ox + vx * t_land + vx * 0.22 * min(s, 0.6)
+        y = ground - hop
+        ang = 1.0 + spin * t_land + spin * 0.18 * (1 - math.exp(-5 * s)) * 1.0
+    half = BAT_DRAW_LENGTH / 2
+    dx, dy = math.cos(ang) * half, math.sin(ang) * half * (1 if t < t_land else 0.25)
+    pygame.draw.ellipse(surf, (40, 80, 36), (x - 40, ground - 4, 80, 9))
+    draw_real_bat(surf, (x - dx, y - dy), (x + dx, y + dy), 11)
+
+
+def draw_wall_robber(surf, x, jump, skin):
+    """An outfielder leaping at the wall (batting view) with his glove up over it."""
+    s = 0.95
+    feet = ROB_FEET_Y - jump
+    pygame.draw.ellipse(surf, (35, 85, 35), (x - 12, ROB_FEET_Y - 3, 24, 8))
+    draw_person(surf, x, feet, s, FIELD_BODY, FIELD_CAP, skin=skin, shadow=False)
+    glove = (x + 2, feet - 38 * s)
+    pygame.draw.line(surf, FIELD_BODY, (x + 3, feet - 22 * s), glove, 4)
+    pygame.draw.circle(surf, (120, 75, 40), glove, 6)
+    return glove
+
+
 def draw_base_indicator(surf, x, y, bases, armed):
     """A little diamond in the corner showing who is on base (gold = occupied)."""
     pts = [(x, y + 20), (x + 20, y), (x, y - 20), (x - 20, y)]           # home, first, second, third
@@ -1016,7 +1133,14 @@ BAT_STYLES = [
     dict(name="Driftwood",  body=(150, 140, 128), handle=None,          tape=(34, 34, 38),    knob=(60, 56, 52),    cap=(104, 96, 88),   label=(40, 40, 44),    shine=(200, 192, 180)),
     dict(name="Navy",       body=(28, 44, 96),    handle=None,          tape=(235, 235, 240), knob=(235, 235, 240), cap=(18, 28, 66),    label=(214, 176, 70),  shine=(100, 124, 190)),
 ]
+for _style in BAT_STYLES:
+    _style["power"], _style["window"] = BAT_TRAITS[_style["name"]]
 CURRENT_BAT = BAT_STYLES[0]      # the bat the current batter is using (a new batter picks a new one)
+
+
+def set_current_bat(index):
+    global CURRENT_BAT
+    CURRENT_BAT = BAT_STYLES[index % len(BAT_STYLES)]
 
 
 def pick_bat_style():
@@ -1109,7 +1233,7 @@ def draw_bat_stick(surf, hands, tip, bz):
     draw_real_bat(surf, hands, tip, 11 * scale)                                              # a real bat shape
 
 
-def draw_batter(surf, swing_clock, cap, skin=SKIN_DEFAULT, clock=0.0, load=0.0, settle=1.0, big=False):
+def draw_batter(surf, swing_clock, cap, skin=SKIN_DEFAULT, clock=0.0, load=0.0, settle=1.0, big=False, bat=True):
     """The batter seen from behind. His hips open first, then his shoulders; his arms and the bat go BEHIND his body
     (hidden by his torso and head) during the load and again at the end of the follow-through, and swing out in front of
     him through the hitting zone, with the barrel trailing his hands until the last moment."""
@@ -1156,7 +1280,7 @@ def draw_batter(surf, swing_clock, cap, skin=SKIN_DEFAULT, clock=0.0, load=0.0, 
         pygame.draw.circle(surf, BLACK, hands, 6, 1)
 
     arms_behind = behind > 0.5                                            # arms on the far side of his body: drawn BEFORE the torso
-    if bz < 0:
+    if bz < 0 and bat:
         draw_bat_stick(surf, hands, tip, bz)                              # the bat is on the far side: behind the body
     if arms_behind:
         draw_arm(sh_f, True)
@@ -1184,7 +1308,7 @@ def draw_batter(surf, swing_clock, cap, skin=SKIN_DEFAULT, clock=0.0, load=0.0, 
     pygame.draw.rect(surf, cap, (flap_x, 243, 8, 14), border_radius=3)
     if not arms_behind:
         draw_arm(sh_r, False)                                             # the rear arm is the near one: in front of his chest
-    if bz >= 0:
+    if bz >= 0 and bat:
         draw_bat_stick(surf, hands, tip, bz)                              # the bat is on the camera's side: over his shoulder / arm
     if not arms_behind:
         draw_hands()
@@ -1390,6 +1514,8 @@ def hr_position(hit):
     u = min(1, hit.time / hit.flight)
     k = hr_k(hit.distance)
     end_y, peak, end_r = hr_end_y(hit.distance), lerp(20, 80, k), lerp(6.5, 2, k)
+    if hit.robbed:
+        end_y, peak, end_r = ROB_END_Y, 30, 6.5            # it only gets as high as the robber's glove
     return hit.start_x + hit.sideways * u, hit.start_y - (hit.start_y - end_y) * u - peak * math.sin(math.pi * u), 9 - (9 - end_r) * u
 
 
@@ -1868,9 +1994,11 @@ class Game:
         self.mouse = (-1, -1)
         self.configure(DEFAULT_TEAM_NAME, TEAM_COLORS[0][1], DEFAULT_DIFFICULTY, DEFAULT_INNINGS)
 
-    def configure(self, team_name, team_color, difficulty, innings, logo=None):
-        """Apply the start-screen choices and begin a fresh game."""
+    def configure(self, team_name, team_color, difficulty, innings, logo=None, bat_choice=None):
+        """Apply the start-screen choices and begin a fresh game. bat_choice: 0 = every hitter has his own bat, 1+ = the whole team uses that bat."""
         self.team_name, self.team_color, self.innings = team_name, team_color, innings
+        if bat_choice is not None or not hasattr(self, "bat_choice"):
+            self.bat_choice = bat_choice or 0
         self.home_logo = logo if logo is not None else build_default_logo(team_name, team_color)
         self.cpu_logo = build_cpu_logo()
         self.set_difficulty(difficulty)
@@ -1894,11 +2022,31 @@ class Game:
         self.crowd_energy = self.cpu_cheer = 0.0     # how fired up your crowd / the CPU's dugout is (decays over time)
         self.cpu_roll = random.random()      # 0-1: how much of its allowed maximum the CPU will score this game
         self.my_line, self.cpu_line, self.inning_start_runs = [], [], 0      # line score
-        self.stats = dict(hits=0, hr=0, k=0, bb=0, perfect=0, steals=0, steal_att=0)
+        self.stats = dict(hits=0, hr=0, k=0, bb=0, perfect=0, steals=0, steal_att=0, errors=0, dp=0, sf=0, robbed=0, long_hr=0, best_streak=0)
+        self.pitch_count, self.weak_vs = 0, {}               # the pitcher tires; he also attacks the pitches you keep missing
+        self.streak, self.fire_flash = 0, 0.0                # good swings in a row (ON FIRE at ON_FIRE_STREAK)
+        self.spray = []                                      # where every ball in play went: (x, y, kind) for the game-over spray chart
+        self.spray_bg = None
+        self.lineup = [dict(name=n, num=num, power=p, contact=c, speed=sp, skin=random.choice(SKIN_TONES),
+                            bat=(random.randrange(len(BAT_STYLES)) if self.bat_choice == 0 else self.bat_choice - 1), ab=0, h=0, hr=0)
+                       for n, num, p, c, sp in LINEUP]
+        self.batter_i = 0
+        roll, acc, self.weather = random.uniform(0, sum(w for _, w in WEATHER_WEIGHTS)), 0, None
+        for name, weight in WEATHER_WEIGHTS:
+            acc += weight
+            if roll <= acc:
+                self.weather = name
+                break
+        mph = random.randint(8, 18) if self.weather == "Windy" else random.randint(0, 5)
+        way = random.choice(("OUT", "IN", "CROSS")) if self.weather == "Windy" else "CALM"
+        self.wind = dict(mph=mph, way=way, cross=random.choice((-1, 1)))
+        self.weather_label = {"Clear": "SUNNY DAY", "Night": "NIGHT GAME", "Rain": "RAIN",
+                              "Windy": f"WIND {mph} MPH {way}"}[self.weather]
+        self.rain = [(random.random(), random.random(), random.uniform(500, 800)) for _ in range(150)]
+        self._overlays = {}
         self.bases = [0, 0, 0]               # [first, second, third]: 1 if a runner is on it
         self.pitch = self.hit = self.fp = None
-        self.skin = random.choice(SKIN_TONES)                    # the current batter's skin tone (he keeps it on the bases)
-        pick_bat_style()                                        # ...and a bat
+        self.set_batter(0)                                       # the leadoff hitter (his own skin tone and bat)
         self.new_batter = False                                  # True after an at-bat ends: the next batter gets a new skin tone
         self.settle, self.finish_big = 1.0, False                # easing back from the held follow-through (1 = done)
         self.fielder_skins = {name: random.choice(SKIN_TONES) for name in FIELDER_POSTS}
@@ -1920,6 +2068,31 @@ class Game:
 
     # ---- states & views ------------------------------------------------------
     # WAIT -> WIND_UP -> PITCH -> BALL_IN_FLIGHT (home run) | FIELD_PLAY (everything else) -> MESSAGE -> WAIT ...
+    def hot_check(self, good):
+        """Called when a ball in play is finished: an out (or an error) ends a hot streak."""
+        if not good:
+            self.streak = 0
+
+    def set_batter(self, i):
+        """The next hitter in the order steps in: his skin tone and his bat come with him."""
+        self.batter_i = i % len(self.lineup)
+        b = self.lineup[self.batter_i]
+        self.skin = b["skin"]
+        set_current_bat(b["bat"])
+
+    def credit(self, hit=False, hr=False, ab=True):
+        """Today's line for the batter who just finished his at-bat."""
+        b = self.lineup[self.batter_i]
+        b["ab"] += 1 if ab else 0
+        b["h"] += 1 if hit else 0
+        b["hr"] += 1 if hr else 0
+
+    def on_fire(self):
+        return self.streak >= ON_FIRE_STREAK
+
+    def fatigue(self):
+        return clamp((self.pitch_count - FATIGUE_START) / FATIGUE_SPAN, 0.0, 1.0)
+
     def cheer(self, amount):
         """Fire up the crowd and your dugout."""
         self.crowd_energy = min(1.5, self.crowd_energy + amount)
@@ -1952,8 +2125,8 @@ class Game:
         if state != "MESSAGE":
             self.celebrating = False                         # stop the fireworks once we leave the message
         if state == "WAIT" and self.new_batter:              # the at-bat is over: a fresh batter steps in, already in his stance
-            self.skin, self.new_batter = random.choice(SKIN_TONES), False
-            pick_bat_style()                                    # a new batter brings a new bat
+            self.new_batter = False
+            self.set_batter(self.batter_i + 1)               # the next hitter in the order (his own skin tone and bat)
             self.swing_clock, self.settle = -1, 1.0          # (no follow-through held over from the last batter)
         if state in ("WAIT", "WIND_UP", "PITCH", "BALL_IN_FLIGHT", "HR_CUTSCENE", "GAME_OVER"):
             self.set_view("bat")
@@ -2047,6 +2220,8 @@ class Game:
             weights["Fastball"] *= 1.3
         if any(self.bases):                                              # hold the runners with the heat
             weights["Fastball"] *= 1.3
+        for n in names:                                                  # attack what you keep missing / fouling
+            weights[n] *= 1 + 0.3 * min(3, self.weak_vs.get(n, 0))
         if self.pitch_history:
             last = self.pitch_history[-1]
             weights[last] *= 0.55                                        # don't be predictable
@@ -2060,18 +2235,20 @@ class Game:
             weights = [35, 30, 35]                                       # work the edges with two strikes
         elif self.balls == 3:
             weights = [15, 70, 15]                                       # right down the middle
+        weights[1] += 40 * self.fatigue()                                # a tired pitcher leaves it over the heart of the plate
         return random.choices([-1, 0, 1], weights=weights)[0]
 
     def start_pitch(self):
         self.finish_big = bool(self.hit and self.hit.quality == "perfect_perfect")      # which finish was he holding?
         self.settle = 0.0 if (self.swing_clock >= 0 and not self.new_batter) else 1.0   # same batter: ease back to the stance
-        if self.new_batter:                                  # a new batter steps in with his own skin tone
-            self.skin, self.new_batter = random.choice(SKIN_TONES), False
-            pick_bat_style()                                    # a new batter brings a new bat
+        if self.new_batter:                                  # a new batter steps in
+            self.new_batter = False
+            self.set_batter(self.batter_i + 1)
         name = self.choose_pitch()
         cfg = PITCHES[name]
         t = random.random()
-        speed = self.diff["speed"]                           # difficulty: >1 = faster pitches, <1 = slower
+        speed = self.diff["speed"] * (1 - FATIGUE_SLOWDOWN * self.fatigue())     # difficulty (and a tired arm): >1 = faster pitches, <1 = slower
+        self.pitch_count += 1
         zone = self.choose_zone()
         self.pitch = Pitch(name, lerp(*cfg["seconds"], t) / speed, round(lerp(*cfg["mph"], t) * speed), cfg["hittable"],
                            zone=zone, offset=zone * self.diff["zone_offset"])
@@ -2088,7 +2265,8 @@ class Game:
         self.swing_clock = 0
         raw_error = pitch.time - pitch.duration                  # vs. the plate: used for which way the ball is pulled
         error = pitch.time - (pitch.duration + pitch.offset)     # vs. the perfect swing for this location
-        size = abs(error)
+        batter = self.lineup[self.batter_i]                      # his contact rating, his bat and a hot streak all widen the windows
+        size = abs(error) / (batter["contact"] * CURRENT_BAT["window"] * (ON_FIRE_CONTACT if self.on_fire() else 1.0))
         # a normally unhittable pitch (the splitter) can be hit on Easy, but only inside the green window
         can_hit = pitch.hittable or (self.diff["splitter_in_green"] and size < self.win_perfect)
         if not can_hit:
@@ -2101,6 +2279,17 @@ class Game:
             pitch.label = "GOOD"
         else:
             pitch.label = "EARLY" if error < 0 else "LATE"
+        good_swing = can_hit and size < self.win_good
+        if good_swing:
+            self.streak += 1
+            if self.streak == ON_FIRE_STREAK:
+                self.fire_flash = 1.8
+                self.cheer(0.8)
+            self.stats["best_streak"] = max(self.stats["best_streak"], self.streak)
+        else:
+            self.streak = 0
+        if pitch.hittable:                                       # the pitcher remembers the pitches you can't hit
+            self.weak_vs[pitch.name] = max(0, self.weak_vs.get(pitch.name, 0) + (-1 if good_swing else 1))
         if can_hit and size < self.win_perfect:
             self.stats["perfect"] += 1
             self.cheer(0.9 if size < self.win_pp else 0.4)                 # the crowd loves a great swing
@@ -2172,6 +2361,12 @@ class Game:
         self.steal_armed = False                             # the steal is called off when the ball is put in play
         roll = random.random()
         kind = next(result for chance, result in HIT_TABLES[quality] if roll < chance)
+        power = self.lineup[self.batter_i]["power"] * CURRENT_BAT["power"]       # a slugger's singles become doubles, a slap hitter's homers become doubles
+        up, down, r = clamp((power - 1) * POWER_UPGRADE, 0, 0.45), clamp((1 - power) * POWER_UPGRADE, 0, 0.45), random.random()
+        if kind in ("1B", "2B") and r < up:
+            kind = "HR" if (kind == "2B" and quality == "perfect") else "2B" if kind == "1B" else kind
+        elif kind in ("HR", "2B") and quality != "perfect_perfect" and r > 1 - down:
+            kind = {"HR": "2B", "2B": "1B"}[kind]
         info = HIT_INFO[kind]
         x, y, _ = pitch_position(self.pitch, self.pitch.time / self.pitch.duration)
         sideways = clamp(raw_error * 1500 + (random.random() - 0.5) * 120, -300, 300)   # early = left, late = right
@@ -2202,6 +2397,10 @@ class Game:
                     self.hit.sideways = end_x - x
             if not self.board_hit and random.random() < FAN_CATCH_CHANCE:    # rare animation: a fan catches it
                 self.fan = (end_x, hr_end_y(self.hr_distance))
+            if not self.board_hit and not self.fan and self.hr_distance < ROB_MAX_FT and random.random() < ROB_CHANCE:
+                self.hit.robbed = True                       # rare: an outfielder leaps and steals it at the wall
+                self.hit.sideways = clamp(end_x, 90, 680) - x
+            self.hit.flip = (not self.hit.robbed and self.hr_distance >= FLIP_MIN_FT and random.random() < FLIP_CHANCE)
             self.set_state("BALL_IN_FLIGHT")                 # stays in the batting view
         else:
             self.start_field_play()                          # cut to the overhead view
@@ -2209,6 +2408,11 @@ class Game:
     def start_field_play(self):
         hit = self.hit
         hit.land_x, hit.land_y = landing_spot(hit.kind, hit.sideways)
+        if hit.arc > 0 and self.wind["mph"]:                 # the wind carries (or knocks down) fly balls
+            w = self.wind
+            f = 1 + 0.012 * w["mph"] * (1 if w["way"] == "OUT" else -1 if w["way"] == "IN" else 0)
+            hit.land_x = clamp(HOME[0] + (hit.land_x - HOME[0]) * f + (3 * w["mph"] * w["cross"] if w["way"] == "CROSS" else 0), 80, 1200)
+            hit.land_y = clamp(HOME[1] + (hit.land_y - HOME[1]) * f, 262, 700)
         fielders = [Fielder(name, post, post[0], post[1]) for name, post in FIELDER_POSTS.items()]
         index = {f.name: i for i, f in enumerate(fielders)}
         for f in fielders:
@@ -2246,8 +2450,10 @@ class Game:
         for i, on_base in enumerate(self.bases):
             if on_base:
                 end = min(4, i + 1 + advance[i])
+                forced = hit.kind == "GROUND_OUT" and end > i + 1           # a force play: he CAN be put out (double plays!)
                 others.append(dict(start=i + 1, end=end, pos=float(i + 1), skin=on_base, target=end, forward=True, moving=end > i + 1,
-                                   auto=True, out=False, scored=False, origin=i + 1))     # on_base holds his skin tone
+                                   auto=not forced, out=False, scored=False, origin=i + 1,
+                                   speed=FORCE_RUN_MULT if forced else 1.0))     # on_base holds his skin tone
                 if end >= 4: runs += 1
                 else: new_bases[end - 1] = on_base
 
@@ -2322,16 +2528,32 @@ class Game:
             chain.append((k, o))
             k += 1
         for k, o in chain:                                   # ...then send them all one base ahead
-            o.update(target=k + 1, forward=True, moving=True, auto=False, origin=k)
+            o.update(target=k + 1, forward=True, moving=True, auto=False, origin=k, pushed_by=base)
+            # (pushed_by = the base the batter-runner was leaving. If he turns back to it, this runner goes back too -
+            #  even if he already reached the next bag - so nobody is left stranded an extra base ahead.)
 
     def update_others(self, dt):
         for o in self.fp.others:
             if o["out"] or o["scored"] or not o["moving"]:
                 continue
+            if o.get("delay", 0) > 0:                        # a runner tagging up waits a moment after the catch
+                o["delay"] -= dt
+                continue
             if o["auto"] and self.fp.time <= RUNNER_START_DELAY:
                 continue
-            step = RUNNER_SPEED * dt
-            o["pos"] = min(o["pos"] + step, o["target"]) if o["forward"] else max(o["pos"] - step, o["target"])
+            step = RUNNER_SPEED * o.get("speed", 1.0) * dt
+            if o["forward"]:
+                new_pos = min(o["pos"] + step, o["target"])
+                r = self.fp.runner
+                if o.get("pushed_by") is not None and not self.fp.pending and r.forward:
+                    # A runner pushed ahead by the batter-runner keeps PACE with him: he never gets further ahead than he
+                    # started (one base per runner in the chain), so he can't race all the way home while you are still
+                    # rounding a bag - and if you turn back, he hasn't gone anywhere he can't come back from.
+                    lead = o["origin"] - o["pushed_by"]
+                    new_pos = min(new_pos, max(o["pos"], r.pos + lead))
+                o["pos"] = new_pos
+            else:
+                o["pos"] = max(o["pos"] - step, o["target"])
             if o["pos"] == o["target"]:
                 self.other_arrives(o)
 
@@ -2344,6 +2566,29 @@ class Game:
             o["moving"], o["scored"] = False, True
         else:
             o["moving"], o["end"] = False, base
+
+    def start_tag_ups(self):
+        """A fly ball to the outfield was caught: runners on base may TAG UP and go on the throw (a sacrifice fly if the man on
+        third scores). They only go if they think they beat the throw, so a deep fly gets them moving and a shallow one doesn't."""
+        fp = self.fp
+        if self.outs + 1 >= OUTS_PER_INNING:
+            return                                           # that was the third out: nobody runs
+        fielder = fp.fielders[fp.chaser]
+        if fielder.name not in ("LF", "CF", "RF"):
+            return
+        waiting = {round(o["pos"]): o for o in fp.others if not o["moving"] and not o["out"] and not o["scored"]}
+        going = set()
+        for base in (3, 2, 1):
+            o = waiting.get(base)
+            if not o or (base + 1 <= 3 and (base + 1) in waiting and (base + 1) not in going):
+                continue                                     # nobody there, or the man ahead of him isn't going
+            nx, ny = BASES[base + 1]
+            throw_time = FIELDER_PICKUP_TIME + math.hypot(fielder.x - nx, fielder.y - ny) / THROW_SPEED + RELAY_TIME
+            runner_time = TAG_DELAY + 1.0 / (RUNNER_SPEED * TAG_SPEED_MULT)
+            if runner_time <= throw_time + TAG_RISK:
+                o.update(target=base + 1, forward=True, moving=True, auto=False, origin=base, delay=TAG_DELAY, speed=TAG_SPEED_MULT,
+                         pushed_by=None)
+                going.add(base)
 
     def pick_chaser(self):
         """A loose ball: whoever is CLOSEST to it goes after it (not just the man who first went for it)."""
@@ -2399,7 +2644,7 @@ class Game:
         if r.wait > 0:                                       # reaction time at the start
             r.wait -= dt
             return
-        step = RUNNER_SPEED * (SLIDE_SPEED_MULT if r.sliding else 1.0) * dt
+        step = RUNNER_SPEED * self.lineup[self.batter_i]["speed"] * (SLIDE_SPEED_MULT if r.sliding else 1.0) * dt
         r.pos = min(r.pos + step, r.target) if r.forward else max(r.pos - step, r.target)
         if r.pos == r.target:
             self.runner_arrives()                            # he reaches the bag first; only THEN can he be called out
@@ -2438,6 +2683,7 @@ class Game:
                     ball.mode, ball.holder, ball.hold_time, ball.quick = "held", fp.chaser, 0.0, False
                     fp.catch = dict(t=0.0)
                     self.decide("flyout", 0, 0.9)
+                    self.start_tag_ups()
                 else:                                        # it falls in: bounce and keep rolling
                     ball.mode, ball.bt = "loose", 0.0
                     ux, uy = unit(hit.land_x - HOME[0], hit.land_y - HOME[1])
@@ -2456,13 +2702,30 @@ class Game:
             self.pick_chaser()                               # the nearest fielder to the ball goes for it
             chaser = fp.fielders[fp.chaser]
             if math.hypot(chaser.x - ball.x, chaser.y - ball.y) < 14:
-                ball.mode, ball.holder, ball.hold_time, ball.quick = "held", fp.chaser, 0.0, False
+                if (hit.arc == 0 and not fp.error_done and chaser.name in ("1B", "2B", "SS", "3B", "P")
+                        and random.random() < FIELD_ERROR_CHANCE):             # ERROR: he boots it
+                    fp.error_done = fp.error = True
+                    self.stats["errors"] += 1
+                    fp.error_fx = dict(t=0.0, x=chaser.x, y=chaser.y)
+                    a = random.uniform(0, math.tau)
+                    ball.vx, ball.vy, ball.bt = math.cos(a) * 95, math.sin(a) * 95, 0.0
+                else:
+                    ball.mode, ball.holder, ball.hold_time, ball.quick = "held", fp.chaser, 0.0, False
         elif ball.mode == "thrown":
             ball.t += dt
             u = min(1, ball.t / ball.dur)
             ball.x, ball.y = lerp(ball.sx, ball.tx, u), lerp(ball.sy, ball.ty, u)
             ball.z = 25 * math.sin(math.pi * u)
-            if u >= 1:
+            if u >= 1 and (not fp.throw_error_done and fp.fielders[ball.receiver].name != "P"
+                           and math.hypot(ball.tx - ball.sx, ball.ty - ball.sy) > 140 and random.random() < THROW_ERROR_CHANCE):
+                fp.throw_error_done = fp.error = True                           # ERROR: a wild throw gets away
+                self.stats["errors"] += 1
+                fp.error_fx = dict(t=0.0, x=ball.sx, y=ball.sy)
+                ux, uy = unit(ball.tx - ball.sx, ball.ty - ball.sy)
+                ball.mode, ball.z, ball.bt = "loose", 0.0, 0.0
+                ball.vx, ball.vy = ux * 120 + random.uniform(-60, 60), uy * 120 + random.uniform(-60, 60)
+                fp.chaser = ball.receiver
+            elif u >= 1:
                 ball.mode, ball.holder, ball.hold_time, ball.z, ball.quick = "held", ball.receiver, 0.0, 0.0, True
         if ball.mode == "held":
             holder = fp.fielders[ball.holder]
@@ -2743,16 +3006,25 @@ class Game:
             if r.target <= max(r.earned, 1):                 # can't turn back toward home or during the guaranteed part
                 return
             r.target, r.forward = r.target - 1, False
-            for o in fp.others:                              # the runners sent ahead of him go back to where they were
-                if o["moving"] and not o["auto"] and o["forward"]:
-                    o["target"], o["forward"] = o["origin"], False
+            self.send_pushed_runners(r.target, back=True)    # the runners he pushed ahead go back to where they were
         else:
             r.target, r.forward = r.target + 1, True
-            for o in fp.others:                              # ...and go again if he changes his mind
-                if o["moving"] and not o["auto"] and not o["forward"]:
-                    o["target"], o["forward"] = o["origin"] + 1, True
+            self.send_pushed_runners(r.target - 1, back=False)   # ...and go again if he changes his mind
         r.run_through = False
         r.turn_cooldown = TURN_COOLDOWN
+
+    def send_pushed_runners(self, base, back):
+        """The batter-runner turned around on the way out of `base`. Only the runners HE pushed off their bags when he left
+        `base` are affected: back=True sends them back to the bag they came from (whether they are still running or already
+        standing on the next bag), back=False sends them on again. Runners who already scored or are out stay that way."""
+        for o in self.fp.others:
+            if o["out"] or o["scored"] or o["auto"] or o.get("pushed_by") != base:
+                continue
+            goal = o["origin"] if back else o["origin"] + 1
+            if o["pos"] == goal:
+                o["moving"], o["target"] = False, goal
+                continue
+            o["target"], o["forward"], o["moving"] = goal, o["pos"] < goal, True
 
     def action_return(self):
         """SPACE while running: go back to the previous base (everyone sent ahead of you goes back too)."""
@@ -2787,6 +3059,8 @@ class Game:
             else:
                 new_bases[min(3, max(1, round(other["pos"]))) - 1] = other["skin"]
         self.outs += extra_outs                              # force outs on the runners ahead of him count
+        sf = outcome == "flyout" and runs > 0 and self.outs + 1 < OUTS_PER_INNING            # a run scored on the fly out: sacrifice fly
+        fc = (outcome not in ("out", "flyout", "norun", "score") and fp.hit.kind == "GROUND_OUT" and extra_outs > 0)   # fielder's choice
         self.end_at_bat()
         third_out = False
         if outcome in ("out", "flyout", "norun"):
@@ -2800,9 +3074,19 @@ class Game:
             self.stats["hr"] += 1
         else:
             new_bases[base - 1] = fp.skin or 1                 # the batter stays on base with his own skin tone
-            self.stats["hits"] += 1
+            if not (fp.error or fc):
+                self.stats["hits"] += 1
         if self.outs >= OUTS_PER_INNING and not third_out:     # the third out came from a runner ahead of him
             runs, new_bases, third_out = 0, [0, 0, 0], True
+        scored_hr = outcome == "score"
+        self.credit(hit=(scored_hr or not (outcome in ("out", "flyout", "norun") or fp.error or fc)), hr=scored_hr, ab=not sf)
+        if sf:
+            self.stats["sf"] += 1
+        if extra_outs and outcome in ("out", "flyout"):
+            self.stats["dp"] += 1
+        good = scored_hr or not (outcome in ("out", "flyout", "norun") or fp.error or fc)
+        self.spray.append((fp.hit.land_x, fp.hit.land_y, "hit" if good else "out"))
+        self.hot_check(good)
         self.runs += runs
         self.bases = new_bases
         if outcome in ("out", "flyout", "norun"):
@@ -2822,7 +3106,15 @@ class Game:
             big = {1: "SINGLE", 2: "DOUBLE", 3: "TRIPLE"}[base]
             if base == 1 and fp.hit.kind == "GROUND_OUT":
                 big = "INFIELD SINGLE"
-        if extra_outs:
+        if sf:
+            big = "SAC FLY"
+        if fp.error and outcome not in ("out", "flyout", "norun"):
+            big = "REACHED ON ERROR" if not fc else "ERROR ON THE PLAY"
+        elif fc:
+            big = "FIELDER'S CHOICE"
+        if extra_outs and outcome in ("out", "flyout"):
+            big = "DOUBLE PLAY!" if extra_outs == 1 else "TRIPLE PLAY!"
+        elif extra_outs and not fc:
             big += "  |  RUNNER OUT"
         small = "Side retired" if third_out else score_text or ("Never ran to first" if outcome == "norun" else "")
         self.show_message(big, small, then=self.end_inning if third_out else None, wait=True)
@@ -2835,6 +3127,7 @@ class Game:
         self.outs += 1
         if text.startswith("STRIKEOUT"):
             self.stats["k"] += 1
+            self.credit()
         self.end_at_bat()
         self.cheer_cpu(0.8)                                                # the CPU's dugout celebrates your out
         third_out = self.outs >= OUTS_PER_INNING
@@ -2855,11 +3148,25 @@ class Game:
         self.home_run()
 
     def home_run(self):
+        if self.hit and self.hit.robbed:                     # rare: an outfielder steals it at the wall
+            self.stats["robbed"] += 1
+            self.credit()
+            self.streak = 0
+            self.spray.append((HOME[0] + self.hit.sideways * 1.2, 300, "out"))
+            self.cheer_cpu(0.9)
+            self.record_out("ROBBED!", "Leaps and steals a home run at the wall!")
+            return
+        if self.hit:
+            self.credit(hit=True, hr=True)
+            self.spray.append((HOME[0] + self.hit.sideways * 1.6, 262, "hr"))
+            if self.hr_distance >= FLIP_MIN_FT:
+                self.stats["long_hr"] = max(self.stats["long_hr"], self.hr_distance)
         runs = 1 + sum(1 for b in self.bases if b)
         self.runs += runs
         self.bases = [0, 0, 0]
         self.stats["hits"] += 1
         self.stats["hr"] += 1
+        self.stats["long_hr"] = max(self.stats["long_hr"], self.hr_distance)
         self.end_at_bat()
         small = f"{runs} runs score" if runs > 1 else "Gone!"
         if self.fan:
@@ -2902,10 +3209,16 @@ class Game:
         if self.inning >= self.innings and self.runs != self.cpu_runs:     # tied after the last inning = extra innings
             self.set_state("GAME_OVER")
             return
+        stretch = self.inning == STRETCH_INNING and self.innings > STRETCH_INNING
         self.inning += 1
         self.outs = 0
         self.bases = [0, 0, 0]
-        self.set_state("WAIT")
+        if stretch:
+            self.cheer(1.0)
+            self.cheer_cpu(0.6)
+            self.show_message("SEVENTH-INNING STRETCH", "Everybody up!", 2.6)
+        else:
+            self.set_state("WAIT")
 
     # ---- home run celebration ------------------------------------------------
     def add_fireworks(self, x, y):
@@ -2942,6 +3255,9 @@ class Game:
         self.fade = max(0.0, self.fade - dt)
         self.settle = min(1.0, self.settle + dt / SETTLE_TIME)
         self.shake = max(0.0, self.shake - dt)
+        self.fire_flash = max(0.0, self.fire_flash - dt)
+        if self.fp and self.fp.error_fx:
+            self.fp.error_fx["t"] += dt
         if self.board_time >= 0:                             # scoreboard rock-and-flicker clock
             self.board_time += dt
             if self.board_time > BOARD_ANIM_TIME:
@@ -3081,7 +3397,8 @@ class Game:
         return [pygame.Rect(450, 250 + i * 62, 380, 52) for i in range(len(self.PAUSE_OPTIONS))]
 
     def gallery_rects(self):
-        return [pygame.Rect(60, 150 + i * 76, 380, 64) for i in range(len(ANIMATIONS))]
+        step = min(76, 480 // len(ANIMATIONS))              # squeeze the buttons together as the list grows
+        return [pygame.Rect(60, 140 + i * step, 380, step - 8) for i in range(len(ANIMATIONS))]
 
     def toggle_pause(self):
         self.paused = not self.paused
@@ -3171,12 +3488,13 @@ class Game:
             selected = i == self.anim_index
             pygame.draw.rect(surf, TEAL if selected else (34, 42, 80), rect, border_radius=10)
             pygame.draw.rect(surf, WHITE if selected else (110, 120, 160), rect, 2, border_radius=10)
-            draw_text(surf, f"{i + 1}. {name}", rect.x + 18, rect.centery + 8, 20, align="left")
+            size = 20 if rect.height >= 56 else 17
+            draw_text(surf, f"{i + 1}. {name}", rect.x + 18, rect.centery + size * 0.4, size, align="left")
         name, info, duration = ANIMATIONS[self.anim_index]
         t = min(self.anim_clock % (duration + 0.8), duration)             # plays, pauses a moment, loops
         scene = self.preview_scene
         (self.scene_slugger, self.scene_dive, self.scene_leap, self.scene_broken_bat,
-         self.scene_fan, self.scene_board)[self.anim_index](scene, t)
+         self.scene_fan, self.scene_board, self.scene_robbed, self.scene_flip, self.scene_fire)[self.anim_index](scene, t)
         surf.blit(pygame.transform.smoothscale(scene, self.PREVIEW_RECT.size), self.PREVIEW_RECT.topleft)
         pygame.draw.rect(surf, WHITE, self.PREVIEW_RECT.inflate(8, 8), 3)
         cx = self.PREVIEW_RECT.centerx
@@ -3277,46 +3595,84 @@ class Game:
             if bt < 1.3:
                 draw_text(scene, "BROKEN BAT!", 640, 112, 40, GOLD)
 
-    def scene_homer(self, scene, t, board):
-        """A home run in the batting view. board=False: it clears the wall and a small fan catches it.
-        board=True: it smacks the scoreboard, which rocks and flickers."""
+    def scene_homer(self, scene, t, kind):
+        """A home run in the batting view, re-created for the gallery. kind:
+        "fan"   - it clears the wall and a small fan catches it
+        "board" - it smacks the scoreboard, which rocks and flickers
+        "rob"   - a short one: the center fielder leaps at the wall and steals it
+        "flip"  - a moonshot: the batter flips his bat
+        "fire"  - the batter is ON FIRE: flames in the box, then he crushes one"""
         bat = self.preview_bat
         self.blit_bat_scene(bat, t, 0.4)
-        contact, flight = 0.45, 1.6
-        sideways = -5 if board else 150
+        contact = 1.2 if kind == "fire" else 0.45                         # (the fire scene lets you look at the flames first)
+        flight = 1.6
+        sideways = {"board": -5, "fan": 150, "rob": -190, "flip": 90, "fire": -120}[kind]
+        distance = {"rob": 380, "flip": 480}.get(kind, 420)
         bt = t - (contact + flight)                                       # seconds since the ball reached the wall
         saved = self.board_time
-        self.board_time = bt if board and bt >= 0 else -1.0
+        self.board_time = bt if kind == "board" and bt >= 0 else -1.0
         draw_bat_scoreboard(bat, self)
         self.board_time = saved
         draw_bat_fielders(bat)
-        pitch = Pitch("Fastball", contact, 95, True)
+        pitch = Pitch("Fastball", contact if kind != "fire" else 0.45, 95, True)
         swing = t - (contact - 0.12)
-        draw_batter(bat, swing if swing >= 0 else -1, self.team_color, self.skin, t, 1.0)
-        if t < contact:
-            x, y, r = pitch_position(pitch, t / contact)
-            draw_bat_ball(bat, x, y, r)
-        else:
-            hit = Hit("HR", "perfect", BAT_RELEASE_POINT[0] + 8, 332, sideways, flight, 0, distance=420)
-            hit.time = clamp(t - contact, 0, flight)
-            u = hit.time / flight
-            if not board:
-                draw_fan(bat, hit.start_x + hit.sideways, hr_end_y(hit.distance), clamp((u - 0.7) / 0.3, 0, 1), t, u >= 1)
-            if u < 1:
-                x, y, r = hr_position(hit)
+        hit = Hit("HR", "perfect", BAT_RELEASE_POINT[0] + 8, 332, sideways, flight, 0, distance=distance)
+        hit.robbed = kind == "rob"
+        hit.time = clamp(t - contact, 0, flight)
+        u = hit.time / flight
+        if kind == "fan":
+            draw_fan(bat, hit.start_x + hit.sideways, hr_end_y(hit.distance), clamp((u - 0.7) / 0.3, 0, 1), t, u >= 1)
+        if t < contact:                                                   # the pitch on its way in
+            pitch_t = t - (contact - 0.45)
+            if pitch_t >= 0:
+                x, y, r = pitch_position(pitch, pitch_t / 0.45)
                 draw_bat_ball(bat, x, y, r)
+        elif u < 1:
+            x, y, r = hr_position(hit)
+            draw_bat_ball(bat, x, y, r)
+        if kind == "fire" and t < contact + 0.2:
+            draw_fire_aura(bat, t)
+        flipped = kind == "flip" and swing >= FLIP_START
+        load = smooth(clamp((t - (contact - 0.7)) / 0.5, 0, 1)) if kind == "fire" else 1.0
+        draw_batter(bat, swing if swing >= 0 else -1, self.team_color, self.skin, t, load, bat=not flipped)
+        if flipped:
+            draw_flipped_bat(bat, swing - FLIP_START)
+        if kind == "rob":
+            rx = clamp(hit.start_x + hit.sideways, 90, 680)
+            jump = ROB_JUMP * math.sin(clamp((u - 0.55) / 0.45, 0, 1) * math.pi * 0.5)
+            glove = draw_wall_robber(bat, rx, jump, self.fielder_skins["CF"])
+            if u >= 1:
+                draw_bat_ball(bat, glove[0], glove[1] - 4, 5)
+        if kind == "fire" and t < contact + 0.6:
+            draw_text(bat, "ON FIRE!", 385, 100 + 4 * math.sin(t * 8), 22, (255, 170, 40))
+        if u >= 1:
+            if kind == "rob":
+                draw_text(bat, "ROBBED!", 385, 230, 40)
+                draw_text(bat, "Leaps and steals a home run at the wall!", 385, 262, 16)
             else:
-                draw_text(bat, "HOME RUN!", 385, 230, 40)
-                draw_text(bat, "Off the scoreboard!" if board else "Gone!  A fan makes the catch!", 385, 262, 16)
+                big = f"HOME RUN!  {distance} FT" if kind in ("flip", "fire") else "HOME RUN!"
+                small = {"board": "Off the scoreboard!", "fan": "Gone!  A fan makes the catch!",
+                         "flip": "Absolutely crushed it.  Bat flip!", "fire": "He's on fire!"}[kind]
+                draw_text(bat, big, 385, 230, 40)
+                draw_text(bat, small, 385, 262, 16)
         bat_h = int(LOGICAL_W * BAT_H / BAT_W)
         scene.fill((14, 17, 22))
         scene.blit(pygame.transform.smoothscale(bat, (LOGICAL_W, bat_h)), (0, (LOGICAL_H - bat_h) // 2))
 
     def scene_fan(self, scene, t):
-        self.scene_homer(scene, t, False)
+        self.scene_homer(scene, t, "fan")
 
     def scene_board(self, scene, t):
-        self.scene_homer(scene, t, True)
+        self.scene_homer(scene, t, "board")
+
+    def scene_robbed(self, scene, t):
+        self.scene_homer(scene, t, "rob")
+
+    def scene_flip(self, scene, t):
+        self.scene_homer(scene, t, "flip")
+
+    def scene_fire(self, scene, t):
+        self.scene_homer(scene, t, "fire")
 
     # ---- batting view ---------------------------------------------------------
     def draw_bat_view(self, surf):
@@ -3347,14 +3703,32 @@ class Game:
         if self.state == "BALL_IN_FLIGHT":
             x, y, r = hr_position(self.hit)
             draw_bat_ball(surf, x, y, r)
+        flipped = bool(self.hit and self.hit.flip and self.swing_clock >= FLIP_START and self.state in ("BALL_IN_FLIGHT", "MESSAGE"))
+        if self.on_fire() and self.state in ("WAIT", "WIND_UP", "PITCH"):
+            draw_fire_aura(surf, self.clock)
         draw_batter(surf, self.swing_clock, self.team_color, self.skin, self.clock, self.load_amount(), self.settle,
-                    self.finish_big if self.swing_clock < 0 else bool(self.hit and self.hit.quality == "perfect_perfect"))
+                    self.finish_big if self.swing_clock < 0 else bool(self.hit and self.hit.quality == "perfect_perfect"), bat=not flipped)
+        if flipped:
+            draw_flipped_bat(surf, self.swing_clock - FLIP_START)
+        if self.hit and self.hit.robbed and (self.state == "BALL_IN_FLIGHT" or self.state == "MESSAGE" and self.message == "ROBBED!"):
+            u = clamp(self.hit.time / self.hit.flight, 0, 1) if self.state == "BALL_IN_FLIGHT" else 1.0
+            rx = clamp(self.hit.start_x + self.hit.sideways, 90, 680)
+            glove = draw_wall_robber(surf, rx, ROB_JUMP * math.sin(clamp((u - 0.55) / 0.45, 0, 1) * math.pi * 0.5 + (0 if u < 1 else 0)), self.fielder_skins["CF"])
+            if self.state == "MESSAGE":
+                draw_bat_ball(surf, glove[0], glove[1] - 4, 5)
+        if self.weather in ("Night", "Rain"):
+            self.draw_weather(surf)
+        draw_batter_card(surf, self)
+        if self.fire_flash > 0 or self.on_fire():
+            draw_text(surf, "ON FIRE!", 385, 100 if self.fire_flash > 0 else 112, 22 if self.fire_flash > 0 else 14, (255, 170, 40))
         if self.pitch and (self.state in ("PITCH", "BALL_IN_FLIGHT") or self.state == "MESSAGE" and self.state_time < 1.4):
             self.draw_meter(surf)
         for p in self.confetti:
             surf.fill(p["color"], (p["x"], p["y"], p["size"], p["size"]))
         draw_text(surf, "SPACE / click: swing", 8, 14, 11, WHITE, align="left")
-        draw_text(surf, self.difficulty.upper(), 8, 28, 10, GOLD, align="left")
+        tired = self.fatigue()
+        pc = f"  P: {self.pitch_count}" + ("  TIRED" if tired > 0.55 else "")
+        draw_text(surf, self.difficulty.upper() + "  |  " + self.weather_label + pc, 8, 28, 10, RED if tired > 0.55 else GOLD, align="left")
         if any(self.bases) and self.state in ("WAIT", "WIND_UP"):
             if self.steal_armed:
                 draw_text(surf, "STEAL ON!  (S to cancel)", 8, 42, 10, GREEN, align="left")
@@ -3366,6 +3740,27 @@ class Game:
             draw_text(surf, self.message, 385, 230, int(size))
             if self.sub_message:
                 draw_text(surf, self.sub_message, 385, 262, 16)
+
+    def draw_weather(self, surf):
+        w, h = surf.get_size()
+        if self.weather == "Night":
+            key = (w, h, "n")
+            if key not in self._overlays:
+                shade = pygame.Surface((w, h), pygame.SRCALPHA)
+                shade.fill((8, 14, 46, 120))
+                self._overlays[key] = shade
+            surf.blit(self._overlays[key], (0, 0))
+        elif self.weather == "Rain":
+            key = (w, h, "r")
+            if key not in self._overlays:
+                shade = pygame.Surface((w, h), pygame.SRCALPHA)
+                shade.fill((40, 50, 70, 70))
+                self._overlays[key] = shade
+            surf.blit(self._overlays[key], (0, 0))
+            for fx, fy, sp in self.rain:
+                y = (fy * h + self.clock * sp) % h
+                x = (fx * w - y * 0.18) % w
+                pygame.draw.line(surf, (190, 205, 235), (x, y), (x - 3, y + 10), 1)
 
     def draw_meter(self, surf):
         """The timing bar: the white marker sweeps right; swing when it is over the green.
@@ -3424,7 +3819,33 @@ class Game:
             draw_text(surf, f"{label}: {value}", 470, 436 + i * 36, 22, align="left")
         for i, (label, value) in enumerate(right):
             draw_text(surf, f"{label}: {value}", 790, 436 + i * 36, 22, align="left")
-        draw_text(surf, "Click or press SPACE for the title screen", 640, 620, 18)
+        draw_text(surf, "Longest HR: " + (f"{st['long_hr']} ft" if st["long_hr"] else "-") + f"   Best hot streak: {st['best_streak']}"
+                  + f"   Errors: {st['errors']}  DP: {st['dp']}  SF: {st['sf']}  Robbed: {st['robbed']}", 640, 600, 14, (210, 215, 235))
+        self.draw_spray_chart(surf, 20, 396, 330, 190)
+        bx = 1010
+        draw_text(surf, "BOX SCORE", bx + 90, 392, 16, GOLD)
+        draw_text(surf, "AB  H  HR", bx + 262, 392, 11, (200, 205, 225), align="right")
+        for i, b in enumerate(self.lineup):
+            y = 414 + i * 20
+            draw_text(surf, f"{i + 1}. {b['name']}", bx, y + 8, 12, align="left", outline=False)
+            draw_text(surf, f"{b['ab']}   {b['h']}   {b['hr']}", bx + 262, y + 8, 12, align="right", outline=False)
+        draw_text(surf, "Click or press SPACE for the title screen", 640, 660, 18)
+
+    def draw_spray_chart(self, surf, x, y, w, h):
+        """Every ball you put in play: green = hit, red = out, gold = home run."""
+        pygame.draw.rect(surf, (20, 60, 28), (x, y, w, h), border_radius=8)
+        pygame.draw.rect(surf, (110, 120, 160), (x, y, w, h), 2, border_radius=8)
+        draw_text(surf, "SPRAY CHART", x + w / 2, y + 14, 13, GOLD)
+        sx, sy = w / 1280, (h - 26) / 520
+        def pt(px, py):
+            return int(x + clamp(px, 0, 1280) * sx), int(y + 24 + (clamp(py, 220, 700) - 200) * sy)
+        pygame.draw.polygon(surf, (150, 105, 60), [pt(*BASES[0]), pt(*BASES[1]), pt(*BASES[2]), pt(*BASES[3])], 1)
+        pygame.draw.line(surf, (60, 120, 60), pt(*BASES[0]), pt(80, 230), 1)
+        pygame.draw.line(surf, (60, 120, 60), pt(*BASES[0]), pt(1200, 230), 1)
+        for px, py, kind in self.spray:
+            color = GOLD if kind == "hr" else GREEN if kind == "hit" else RED
+            pygame.draw.circle(surf, color, pt(px, py), 4)
+            pygame.draw.circle(surf, WHITE, pt(px, py), 4, 1)
 
     # ---- overhead field view --------------------------------------------------
     def draw_field_view(self, surf):
@@ -3455,6 +3876,10 @@ class Game:
             self.draw_rare_effects(surf)
             if r.moving and r.run_through:
                 draw_text(surf, "Running through!", rx, ry - 52, 16, GREEN)
+            if fp.error_fx and fp.error_fx["t"] < 1.6:
+                draw_text(surf, "ERROR!", fp.error_fx["x"], fp.error_fx["y"] - 48 - 14 * fp.error_fx["t"], 24, RED)
+        if self.weather in ("Night", "Rain"):
+            self.draw_weather(surf)
         self.draw_field_hud(surf)
 
     def draw_fielder(self, surf, i, f):
@@ -3557,6 +3982,7 @@ class Game:
             score_size -= 1
         draw_text(surf, score_line, 640, 64, score_size, (232, 232, 232), outline=False)
         draw_text(surf, "RUN button / R: next base   S: slide   click runner or SPACE: turn back", 12, 24, 15, WHITE, align="left")
+        draw_text(surf, self.weather_label, 12, 46, 12, (200, 205, 225), outline=False, align="left")
         if self.state == "MESSAGE":
             draw_text(surf, self.message, 640, 140, 56)
             if self.sub_message:
@@ -3583,6 +4009,8 @@ class Menu:
         self.diff_rects = {name: pygame.Rect(299 + i * 166, 514, 150, 42) for i, name in enumerate(DIFFICULTIES)}
         self.inning_rects = {n: pygame.Rect(822 + i * 56, 606, 48, 38) for i, n in enumerate(INNING_OPTIONS)}
         self.start_rect = pygame.Rect(400, 623, 280, 54)
+        self.bat_choice = 0                                  # 0 = mixed (every hitter his own bat), else the whole team uses that bat
+        self.bat_rect = pygame.Rect(850, 546, 160, 30)
         # logo drawing patch
         self.patch_rect = pygame.Rect(858, 330, 144, 144)          # 3 screen pixels per logo pixel
         self.pen_pos = [(852 + i * 26, 494) for i in range(len(PEN_COLORS) + 1)]     # last one is the eraser
@@ -3620,7 +4048,7 @@ class Menu:
     def save_settings(self):
         """Remember the start-screen choices (saved when you press PLAY BALL, just like the logo)."""
         data = {"team_name": self.name, "team_color": TEAM_COLORS[self.color_index][0],
-                "difficulty": self.difficulty, "innings": self.innings}
+                "difficulty": self.difficulty, "innings": self.innings, "bat_choice": self.bat_choice}
         try:
             with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
@@ -3861,7 +4289,7 @@ def main():
             if mode == "menu":
                 if menu.handle_event(event, to_canvas):
                     menu.save_settings()
-                    game.configure(menu.team_name, menu.team_color, menu.difficulty, menu.innings, menu.logo_for_game())
+                    game.configure(menu.team_name, menu.team_color, menu.difficulty, menu.innings, menu.logo_for_game(), menu.bat_choice)
                     mode = "game"
             elif event.type == pygame.MOUSEMOTION:
                 game.mouse = to_canvas(event.pos)

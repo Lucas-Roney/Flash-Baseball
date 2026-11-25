@@ -2,5 +2,6 @@
   "team_name": "BIG TEAM",
   "team_color": "Orange",
   "difficulty": "Hard",
-  "innings": 5
+  "innings": 5,
+  "bat_choice": 0
 }
