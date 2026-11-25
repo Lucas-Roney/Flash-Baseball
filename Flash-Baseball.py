@@ -227,8 +227,8 @@ HIT_INFO = {
 }
 
 # --- Fielding ----------------------------------------------------------------
-FIELDER_SPEED = 100              # pixels per second (smaller = slower fielders = easier extra bases)
-FIELDER_REACTION = 0.7          # seconds a fielder takes to read a fly ball before he starts moving
+FIELDER_SPEED = 80              # pixels per second (smaller = slower fielders = easier extra bases)
+FIELDER_REACTION = 0.9          # seconds a fielder takes to read a fly ball before he starts moving
 FIELDER_MISJUDGE = 35            # a fielder runs to where he THINKS a fly ball will land: off by up to this many pixels
 # CATCH CIRCLE: when a fly ball lands, it is caught if it comes down inside this many pixels of the fielder.
 # Worse contact = bigger circle = more likely to be an out. Anything outside the circle falls in for a hit.
