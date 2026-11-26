@@ -196,13 +196,15 @@ TAG_RISK = 0.30                  # runners go on a fly ball if they think they b
 FORCE_RUN_MULT = 1.35            # runners forced to run on a ground ball (double play chances) get a quick start
 FIELD_ERROR_CHANCE = 0.06        # a ground ball is bobbled (once per play)
 THROW_ERROR_CHANCE = 0.04        # a throw to a base is wild (once per play)
-ROB_CHANCE = 0.14                # a SHORT homer (under ROB_MAX_FT) is robbed at the wall
+ROB_CHANCE = 0.01                # a SHORT homer (under ROB_MAX_FT) is robbed at the wall
 ROB_MAX_FT = 400
 ROB_FEET_Y, ROB_JUMP, ROB_END_Y = 146, 22, 92     # batting view: where the robber stands, how high he jumps, where the ball ends up
 FLIP_MIN_FT = 420                # a homer this long gets a bat flip...
-FLIP_CHANCE = 0.9
-FLIP_START = 0.34                # seconds into the swing when the bat leaves his hands
+FLIP_CHANCE = 0.5
+FLIP_START = 0.55                # seconds into the swing when the bat leaves his hands
 WEATHER_WEIGHTS = [("Clear", 38), ("Night", 26), ("Rain", 16), ("Windy", 20)]
+WEATHER_OPTIONS = ["Random", "Clear", "Night", "Rain", "Windy"]     # start-screen choices ("Random" = rolled with WEATHER_WEIGHTS)
+WEATHER_NAMES = {"Random": "RANDOM", "Clear": "SUNNY", "Night": "NIGHT", "Rain": "RAIN", "Windy": "WINDY"}
 STRETCH_INNING = 7               # the seventh-inning stretch happens after this inning (if the game is that long)
 
 DUGOUTS = {"left": (150, 672), "right": (1130, 672)}   # the home dugout is the left one: batters who make an out walk there and disappear inside
@@ -224,7 +226,7 @@ SHOW_SEAM_LEGEND = True          # False hides the little answer key under the w
 SEAM_PREVIEW_TIME = 0.15         # the window opens this long BEFORE release so you get a head start
 # (spin speed in radians/second, tilt of the spin axis). Negative = seams roll UP (backspin), positive = DOWN.
 SEAM_SPIN = {"Fastball": (-16.0, 0.0), "Curveball": (7.5, 0.3), "Splitter": (0.9, 0.6),
-             "Changeup": (-8.0, 0.0), "Slider": (8.5, 1.9)}
+             "Changeup": (-8.0, 0.0), "Slider": (8.5, 1.5)}
 SEAM_LEGEND_TEXT = {"Fastball": "seams UP = fastball", "Curveball": "seams DOWN = curve", "Splitter": "no spin = splitter",
                     "Changeup": "slower UP = change", "Slider": "tilted = slider"}
 
@@ -285,6 +287,7 @@ CATCH_FX_TIME = 1.2              # seconds the white "CAUGHT!" effect lasts
 RUNNER_SPEED = 0.6               # bases per second
 BATTER_START_DELAY = 0.75        # the batter finishes his swing, drops the bat and gets going (bigger = easier to throw him out at first)
 RUNNER_START_DELAY = 0.2         # reaction time after contact before runners ALREADY on base take off
+OUT_CALL_RANGE = 0.35             # force play at first: a batter this close (in bases) to the bag, with the fielder already there holding the ball, is out
 SLIDE_RANGE = 0.45               # when closer than this (in bases) to the bag, the button says SLIDE
 SLIDE_SPEED_MULT = 1.8           # a slide covers the last stretch this much faster...
 SLIDE_RECOVERY = 0.5             # ...but you need this long to get up before you can run again
@@ -311,12 +314,12 @@ SLUGGER_HITSTOP = 0.12           # the picture freezes this long on the connecti
 
 # --- Rare animations ---------------------------------------------------------
 # Each chance is rolled when that kind of play happens (0 = never, 1 = every time).
-DIVE_CHANCE = 0.30               # on a ground ball, the fielder dives for it
-LEAP_CHANCE = 0.30               # on a fly out, the fielder leaps for the catch
-BROKEN_BAT_CHANCE = 0.12         # on weak contact, the bat snaps
-FAN_CATCH_CHANCE = 0.25          # on a home run into the seats (not over the scoreboard), a fan catches it
+DIVE_CHANCE = 0.10               # on a ground ball, the fielder dives for it
+LEAP_CHANCE = 0.10               # on a fly out, the fielder leaps for the catch
+BROKEN_BAT_CHANCE = 0.05         # on weak contact, the bat snaps
+FAN_CATCH_CHANCE = 0.10          # on a home run into the seats (not over the scoreboard), a fan catches it
 BOARD_X_MIN, BOARD_X_MAX = 292, 478   # a home run that ends up between these x positions hits the scoreboard
-BOARD_HIT_CHANCE = 0.20          # a home run headed over the scoreboard only actually hits it this often
+BOARD_HIT_CHANCE = 0.10          # a home run headed over the scoreboard only actually hits it this often
 BOARD_ANIM_TIME = 3.0           # seconds the scoreboard rocks / flickers
 DIVE_TIME = 0.5                  # seconds of the dive itself
 DIVE_RECOVERY = 0.5              # seconds he lies there / gets up before he can throw
@@ -338,7 +341,17 @@ ANIMATIONS = [
     ("Robbed at the Wall", f"Short homers (under {ROB_MAX_FT} ft): {round(ROB_CHANCE * 100)}% chance", 3.8),
     ("Bat Flip", f"Moonshots ({FLIP_MIN_FT}+ ft): {round(FLIP_CHANCE * 100)}% chance", 3.6),
     ("On Fire", f"{ON_FIRE_STREAK} good swings in a row = a bigger hit window", 3.4),
+    ("Close Play: Safe", "A true cutscene: slow-mo dive, runner beats the tag", 4.4),
+    ("Close Play: Out", "A true cutscene: slow-mo dive, runner gets tagged", 4.4),
 ]
+ANIM_PAGE = 6                    # how many animations fit on one page of the pause menu's gallery
+
+# --- close plays: the runner and the throw arrive at a bag together -> slow motion + the umpire's call ---------
+CLOSE_BALL_RADIUS = 75           # the ball (thrown or held) is this close (pixels) to the bag...
+CLOSE_RUNNER_RANGE = 0.5         # ...while the runner is within this many bases of it
+CLOSE_SLOW = 0.4                 # how slow the slow motion is (1.0 = normal speed)
+CLOSE_SLOW_TIME = 2.4            # seconds of slow motion at most (until the runner reaches the bag)
+CLOSE_SHOW_TIME = 2.3            # how long the cutscene stays up after the runner reaches the bag (the call is made in the middle)
 
 # --- Field geometry (canvas pixels) ------------------------------------------
 HOME, B1, B2, B3 = (610, 610), (880, 470), (650, 345), (360, 470)
@@ -482,6 +495,8 @@ class FieldPlay:
     error_done: bool = False   # (only one bobble per play)
     throw_error_done: bool = False
     error_fx: dict = None      # the "ERROR!" label: t (seconds), x, y
+    close: dict = None         # a close play at a bag: base, t, result ("safe" / "out" / None until called), tres
+    close_done: bool = False   # (one close play per at-bat)
 
 
 # =============================================================================
@@ -730,7 +745,7 @@ def build_field_crowd():
 def build_bat_crowd():
     """Fans for the batting view's stands (smaller squares)."""
     rnd = random.Random(12)
-    return [make_fan(rnd, rnd.random() * BAT_W, 31 + rnd.random() * 82, 3) for _ in range(620)]
+    return [make_fan(rnd, rnd.random() * BAT_W, 31 + rnd.random() * 82, 3) for _ in range(980)]
 
 
 def make_fan(rnd, x, y, size):
@@ -874,6 +889,27 @@ def build_field_background():
     return surf
 
 
+def draw_bat_wall(surf):
+    """The outfield wall in the batting view: the same dark green as the running view's wall. (Drawn again on top of a fan
+    who catches a home run, so he is behind it.)"""
+    pygame.draw.rect(surf, (30, 80, 52), (0, 112, BAT_W, 22))
+    pygame.draw.line(surf, (52, 118, 78), (0, 112), (BAT_W, 112), 2)                 # the padded top edge
+    pygame.draw.line(surf, (22, 60, 40), (0, 133), (BAT_W, 133), 2)
+
+
+def rob_fielder(rx):
+    """Which of the fielders standing around the batting view is closest to the spot where the homer is robbed."""
+    return min(range(len(BAT_FIELDERS)), key=lambda i: math.hypot(BAT_FIELDERS[i][0] - rx, (BAT_FIELDERS[i][1] - ROB_FEET_Y) * 0.6))
+
+
+def robber_pos(rx, u):
+    """He leaves his spot and runs to the wall while the ball is in the air: (silhouette index, x, feet y)."""
+    i = rob_fielder(rx)
+    fx, fy, fs = BAT_FIELDERS[i]
+    k = smooth(clamp(u / 0.55, 0, 1))
+    return i, lerp(fx, rx, k), lerp(fy + 18 * fs, ROB_FEET_Y, k)
+
+
 def build_bat_background():
     """The batting view (behind the batter): sky, crowd, grass, dirt, lines. Drawn once."""
     surf = pygame.Surface((BAT_W, BAT_H))
@@ -882,7 +918,7 @@ def build_bat_background():
         pygame.draw.line(surf, (int(lerp(42, 111, t)), int(lerp(74, 179, t)), int(lerp(122, 200, t))), (0, y), (BAT_W, y))
     pygame.draw.rect(surf, (76, 81, 89), (0, 20, BAT_W, 95))
     # (the crowd is animated live - see build_bat_crowd() and draw_crowd())
-    pygame.draw.rect(surf, (58, 157, 181), (0, 112, BAT_W, 22))
+    draw_bat_wall(surf)
     for i in range(8):
         pygame.draw.rect(surf, (63, 143, 46) if i % 2 else (71, 153, 47), (0, 134 + i * 32, BAT_W, 32))
     dirt = (198, 138, 82)
@@ -935,9 +971,139 @@ def draw_bat_scoreboard(surf, game):
                              (385 + r1 * math.cos(a), 68 + r1 * math.sin(a) * 0.6), 2)
 
 
+SPRAY_MAX_PX, SPRAY_FENCE = 440.0, 0.85       # spray chart: how far the chart reaches (field pixels) and where the wall sits (fraction)
+
+
+def spray_hr_xy(sideways, feet):
+    """Field position for a home run on the spray chart: along its pull/oppo angle, past the wall (longer = farther out)."""
+    a_l, a_r = math.atan2(U_LEFT[0], -U_LEFT[1]), math.atan2(U_RIGHT[0], -U_RIGHT[1])
+    a = a_l + clamp((sideways + 300) / 600, 0.04, 0.96) * (a_r - a_l)
+    d = SPRAY_MAX_PX * clamp(SPRAY_FENCE + 0.015 + (feet - 350) / 200 * 0.11, SPRAY_FENCE + 0.01, 0.99)
+    return HOME[0] + math.sin(a) * d, HOME[1] - math.cos(a) * d
+
+
 def pips(value):
     """1 to 5 pips for a trait value (0.8 = weak ... 1.25 = elite)."""
     return int(clamp(round((value - 0.78) / 0.11) + 1, 1, 5))
+
+
+def draw_close_play(surf, bag, t, result, tres):
+    """The close-play effect at a bag: a pulsing ring + banner, then the umpire's call (arms out = SAFE, fist up = OUT)."""
+    bx, by = bag
+    ux, uy = bx + (36 if bx > 640 else -36), by + 16
+    ump = (28, 28, 34)
+    if result is None and t < CLOSE_SLOW_TIME + 0.4:
+        pygame.draw.circle(surf, GOLD, (bx, by), int(26 + 8 * math.sin(t * 14)), 3)
+        draw_text(surf, "CLOSE PLAY!", bx, by - 74, 30, GOLD)
+    draw_person(surf, ux, uy, 1.3, ump, ump, shadow=False)
+    if result is None:
+        return
+    if tres < 0.7:                                           # dust kicked up at the bag
+        for i in range(9):
+            a = i * 0.7 + 0.3
+            r = 8 + tres * 70
+            pygame.draw.circle(surf, (205, 175, 125), (bx + math.cos(a) * r, by - 8 + math.sin(a) * r * 0.5), max(1, int(7 - tres * 9)))
+    if tres < CLOSE_SHOW_TIME:
+        if result == "safe":
+            pygame.draw.line(surf, ump, (ux - 4, uy - 31), (ux - 30, uy - 29), 5)
+            pygame.draw.line(surf, ump, (ux + 4, uy - 31), (ux + 30, uy - 29), 5)
+            draw_text(surf, "SAFE!", bx, by - 74, 40, GREEN)
+        else:
+            pygame.draw.line(surf, ump, (ux + 4, uy - 31), (ux + 12, uy - 56), 5)
+            pygame.draw.circle(surf, (226, 190, 150), (ux + 12, uy - 58), 4)
+            draw_text(surf, "OUT!", bx, by - 74, 40, RED)
+
+
+def draw_close_cutscene(surf, gap, dist, result, tres, t, skin, team_color):
+    """The close-play CUTSCENE (zoomed in, like the slugger one): the runner dives for the bag while the fielder reaches for him with
+    the ball coming in. gap = how far (in bases) the runner still has to go, dist = how far (pixels) the ball is from the bag.
+    result = None until he arrives, then "safe" / "out"; tres = seconds since he arrived; t = seconds since the cutscene began."""
+    W, H = surf.get_size()
+    bagx, bagy = 640, 528
+    # --- the picture: sky, a dark crowd, grass, then the dirt around the bag ---
+    surf.fill((70, 120, 190), (0, 0, W, 150))
+    surf.fill((46, 50, 66), (0, 90, W, 120))
+    rnd = random.Random(7)
+    for _ in range(420):
+        surf.fill(rnd.choice(((200, 70, 70), (230, 200, 80), (90, 130, 220), (230, 230, 240), (120, 120, 140))),
+                  (rnd.randrange(W), rnd.randrange(96, 206), 5, 5))
+    surf.fill((52, 128, 58), (0, 206, W, 150))
+    for i in range(6):
+        surf.fill((60, 140, 66), (0, 206 + i * 50, W, 25))
+    surf.fill((186, 132, 84), (0, 356, W, H - 356))
+    pygame.draw.line(surf, WHITE, (0, 356), (W, 356), 3)
+    pygame.draw.ellipse(surf, (170, 118, 72), (bagx - 360, bagy - 70, 720, 210))
+    ump = (26, 26, 32)
+    # --- the umpire, standing behind the play (he waits, then makes the call) ---
+    ux, uy, us = 900, 470, 3.2
+    draw_person(surf, ux, uy, us, ump, ump, shadow=False)
+    call = result is not None and tres > 0.45
+    if call:
+        sh = uy - 24 * us
+        if result == "safe":
+            pygame.draw.line(surf, ump, (ux - 5, sh), (ux - 30 * us, sh + 6), 14)
+            pygame.draw.line(surf, ump, (ux + 5, sh), (ux + 30 * us, sh + 6), 14)
+        else:
+            pygame.draw.line(surf, ump, (ux + 5, sh), (ux + 16 * us, sh - 22 * us), 14)
+            pygame.draw.circle(surf, (226, 190, 150), (ux + 16 * us, sh - 22 * us - 6), 14)
+    # --- the bag ---
+    pygame.draw.polygon(surf, WHITE, [(bagx - 46, bagy), (bagx, bagy - 18), (bagx + 46, bagy), (bagx, bagy + 20)])
+    pygame.draw.polygon(surf, (190, 190, 200), [(bagx - 46, bagy), (bagx, bagy + 20), (bagx + 46, bagy), (bagx + 46, bagy + 8), (bagx, bagy + 28), (bagx - 46, bagy + 8)])
+    # --- the runner, sliding in head-first from the left ---
+    rs = 4.2
+    head_x = bagx - 36 - clamp(gap, 0, 0.6) * 620
+    rx, ry = head_x - 14 * rs, bagy + 22
+    pygame.draw.ellipse(surf, (150, 100, 62), (rx - 70, ry - 8, 190, 26))                # his shadow on the dirt
+    draw_person(surf, rx, ry, rs, (240, 240, 240), team_color, sliding=True, skin=skin, shadow=False)
+    hand = (head_x + 14, ry - 20)                                                          # his outstretched hand
+    pygame.draw.line(surf, skin, (head_x - 4, ry - 22), hand, 11)
+    # --- the fielder with the glove ---
+    fx, fy, fs = 760, 650, 4.6
+    k = clamp(dist / CLOSE_BALL_RADIUS, 0.0, 1.4)
+    tag = (bagx - 30, bagy - 6)
+    if result == "out":
+        glove = tag
+    elif result == "safe":
+        glove = (lerp(tag[0] + 18, tag[0] + 60, clamp(tres / 0.3, 0, 1)), tag[1] + 6)    # too late: it comes down on his hand/bag after
+    else:
+        glove = (lerp(tag[0] + 30, 740, clamp(k, 0, 1)), lerp(tag[1] - 20, 400, clamp(k, 0, 1)))
+    draw_person(surf, fx, fy, fs, FIELD_BODY, FIELD_CAP, shadow=False, skin=SKIN_DEFAULT)
+    shoulder = (fx - 8, fy - 24 * fs)
+    pygame.draw.line(surf, FIELD_BODY, shoulder, glove, 16)
+    pygame.draw.circle(surf, (120, 75, 40), glove, 22)
+    # --- the ball: in his glove once it is there, otherwise still coming in from the upper right ---
+    if k < 0.08 or (result == "out") or (result == "safe" and tres > 0.3):
+        ball = (glove[0] + 2, glove[1] - 4)
+    else:
+        far = (1180, 120)
+        ball = (lerp(glove[0], far[0], clamp(k, 0, 1.4)), lerp(glove[1], far[1], clamp(k, 0, 1.4)) - 34 * math.sin(math.pi * clamp(k, 0, 1)))
+        pygame.draw.line(surf, (255, 255, 255, 120), ball, (ball[0] + (ball[0] - glove[0]) * 0.12, ball[1] + (ball[1] - glove[1]) * 0.12 + 6), 3)
+    pygame.draw.circle(surf, WHITE, ball, 13)
+    pygame.draw.circle(surf, (204, 51, 51), ball, 13, 2)
+    # --- impact ---
+    if result == "safe" and tres < 1.1:                                                   # a big cloud of dust at the bag
+        for i in range(14):
+            a = i * 0.9 + 0.2
+            r = 20 + tres * 160 + (i % 3) * 14
+            pygame.draw.circle(surf, (214, 186, 140), (bagx - 10 + math.cos(a) * r * 1.4, bagy + 20 + math.sin(a) * r * 0.45 - tres * 30), max(2, int(26 - tres * 18)))
+    if result == "out" and tres < 0.5:                                                    # the tag: a flash
+        for i in range(10):
+            a = i * 0.63
+            r0, r1 = 20 + tres * 40, 60 + tres * 120
+            pygame.draw.line(surf, (255, 240, 170), (tag[0] + math.cos(a) * r0, tag[1] + math.sin(a) * r0),
+                             (tag[0] + math.cos(a) * r1, tag[1] + math.sin(a) * r1), 5)
+    # --- cinema: bars, labels, fade-in ---
+    surf.fill((0, 0, 0), (0, 0, W, 64))
+    surf.fill((0, 0, 0), (0, H - 64, W, 64))
+    if result is None:
+        draw_text(surf, "CLOSE PLAY!", 640, 38, 36, GOLD)
+        draw_text(surf, "SLOW-MO", 1190, H - 28, 16, (200, 205, 225))
+    if call:
+        draw_text(surf, "SAFE!" if result == "safe" else "OUT!", 640, 200, 110, GREEN if result == "safe" else RED)
+    if t < 0.3:
+        fade = pygame.Surface((W, H))
+        fade.set_alpha(int(255 * (1 - t / 0.3)))
+        surf.blit(fade, (0, 0))
 
 
 def draw_batter_card(surf, game):
@@ -998,11 +1164,12 @@ def draw_flipped_bat(surf, t):
     draw_real_bat(surf, (x - dx, y - dy), (x + dx, y + dy), 11)
 
 
-def draw_wall_robber(surf, x, jump, skin):
-    """An outfielder leaping at the wall (batting view) with his glove up over it."""
+def draw_wall_robber(surf, x, jump, skin, base_y=None):
+    """An outfielder leaping at the wall (batting view) with his glove up over it. base_y = where his feet are when not jumping."""
     s = 0.95
-    feet = ROB_FEET_Y - jump
-    pygame.draw.ellipse(surf, (35, 85, 35), (x - 12, ROB_FEET_Y - 3, 24, 8))
+    base_y = ROB_FEET_Y if base_y is None else base_y
+    feet = base_y - jump
+    pygame.draw.ellipse(surf, (35, 85, 35), (x - 12, base_y - 3, 24, 8))
     draw_person(surf, x, feet, s, FIELD_BODY, FIELD_CAP, skin=skin, shadow=False)
     glove = (x + 2, feet - 38 * s)
     pygame.draw.line(surf, FIELD_BODY, (x + 3, feet - 22 * s), glove, 4)
@@ -1519,9 +1686,11 @@ def hr_position(hit):
     return hit.start_x + hit.sideways * u, hit.start_y - (hit.start_y - end_y) * u - peak * math.sin(math.pi * u), 9 - (9 - end_r) * u
 
 
-def draw_bat_fielders(surf):
-    """Fielders standing around the batting view. Just for looks - the real ones are in the field view."""
-    for x, y, s in BAT_FIELDERS:
+def draw_bat_fielders(surf, skip=None):
+    """Fielders standing around the batting view. Just for looks - the real ones are in the field view. (skip = one who has gone to rob a homer)"""
+    for n, (x, y, s) in enumerate(BAT_FIELDERS):
+        if n == skip:
+            continue
         pygame.draw.ellipse(surf, (40, 66, 58), (x - 8 * s, y - 18 * s, 16 * s, 36 * s))
         pygame.draw.circle(surf, (40, 66, 58), (x, y - 22 * s), 6 * s)
 
@@ -1942,6 +2111,45 @@ def draw_title(surf, title, cx, cy, t):
 BOLT = [(0.05, -0.5), (0.32, -0.5), (0.12, -0.12), (0.3, -0.12), (-0.2, 0.5), (-0.05, 0.0), (-0.25, 0.0)]
 
 
+NIGHT_LIGHTS = [(0.07, 0.09), (0.21, 0.05), (0.79, 0.05), (0.93, 0.09)]     # stadium light banks (fractions of the screen)
+
+
+def build_night_overlay(w, h):
+    """Everything for the NIGHT GAME look, drawn once per screen size: dark edges, a warm pool of light on the field,
+    soft beams from the light banks, and the glare of the lights themselves."""
+    cx, cy = w * 0.5, h * 0.64
+    dark = pygame.Surface((w, h), pygame.SRCALPHA)                       # blue-black, thickest at the edges
+    steps = 40
+    for i in range(steps + 1):
+        t = i / steps                                                    # 0 = outside ... 1 = middle of the pool
+        ew, eh = w * lerp(1.9, 0.5, t), h * lerp(1.7, 0.45, t)
+        pygame.draw.ellipse(dark, (4, 8, 30, int(lerp(170, 30, t ** 0.8))), (cx - ew / 2, cy - eh / 2, ew, eh))
+    glow = pygame.Surface((w, h))                                        # added on top: the field is lit warm white
+    for i in range(31):
+        t = i / 30
+        ew, eh = w * lerp(1.15, 0.3, t), h * lerp(0.95, 0.25, t)
+        c = int(lerp(0, 1, t ** 1.4) * 40)
+        pygame.draw.ellipse(glow, (c, int(c * 0.9), int(c * 0.5)), (cx - ew / 2, cy - eh / 2, ew, eh))
+    beams = pygame.Surface((w, h), pygame.SRCALPHA)                      # faint shafts of light falling from the towers
+    lights = [(w * fx, h * fy) for fx, fy in NIGHT_LIGHTS]
+    for lx, ly in lights:
+        side = 1 if lx < cx else -1
+        pygame.draw.polygon(beams, (255, 245, 205, 13), [(lx - 8, ly), (lx + 8, ly), (cx + side * w * 0.05 + w * 0.3, cy + h * 0.3),
+                                                         (cx + side * w * 0.05 - w * 0.3, cy + h * 0.3)])
+    radius = int(min(w, h) * 0.13)
+    flares = []
+    for level in (0.75, 0.88, 1.0):                                      # three brightnesses so the lights can shimmer
+        f = pygame.Surface((radius * 2, radius * 2))
+        for r in range(radius, 0, -2):
+            k = (1 - r / radius) ** 2.2 * level
+            pygame.draw.circle(f, (int(255 * k), int(248 * k), int(205 * k)), (radius, radius), r)
+        pygame.draw.line(f, (int(150 * level),) * 3, (radius * 0.3, radius), (radius * 1.7, radius), 2)      # a little lens-star
+        pygame.draw.line(f, (int(150 * level),) * 3, (radius, radius * 0.3), (radius, radius * 1.7), 2)
+        pygame.draw.circle(f, (255, 255, 240), (radius, radius), max(2, radius // 8))
+        flares.append(f)
+    return dict(dark=dark, glow=glow, beams=beams, lights=lights, flares=flares, radius=radius)
+
+
 def draw_bolt(surf, cx, cy, height, flip, t):
     """A flickering lightning bolt."""
     sign = -1 if flip else 1
@@ -1994,11 +2202,13 @@ class Game:
         self.mouse = (-1, -1)
         self.configure(DEFAULT_TEAM_NAME, TEAM_COLORS[0][1], DEFAULT_DIFFICULTY, DEFAULT_INNINGS)
 
-    def configure(self, team_name, team_color, difficulty, innings, logo=None, bat_choice=None):
+    def configure(self, team_name, team_color, difficulty, innings, logo=None, bat_choice=None, weather_choice=None):
         """Apply the start-screen choices and begin a fresh game. bat_choice: 0 = every hitter has his own bat, 1+ = the whole team uses that bat."""
         self.team_name, self.team_color, self.innings = team_name, team_color, innings
         if bat_choice is not None or not hasattr(self, "bat_choice"):
             self.bat_choice = bat_choice or 0
+        if weather_choice is not None or not hasattr(self, "weather_choice"):
+            self.weather_choice = weather_choice or "Random"             # kept when you restart from the pause menu
         self.home_logo = logo if logo is not None else build_default_logo(team_name, team_color)
         self.cpu_logo = build_cpu_logo()
         self.set_difficulty(difficulty)
@@ -2037,6 +2247,8 @@ class Game:
             if roll <= acc:
                 self.weather = name
                 break
+        if self.weather_choice in ("Clear", "Night", "Rain", "Windy"):   # chosen on the start screen (anything else = the random roll)
+            self.weather = self.weather_choice
         mph = random.randint(8, 18) if self.weather == "Windy" else random.randint(0, 5)
         way = random.choice(("OUT", "IN", "CROSS")) if self.weather == "Windy" else "CALM"
         self.wind = dict(mph=mph, way=way, cross=random.choice((-1, 1)))
@@ -2479,6 +2691,7 @@ class Game:
         fp = self.fp
         fp.time += dt
         self.update_others(dt)
+        self.update_walk(dt)                                 # (a batter who has just been put out walking back to the dugout)
         if fp.pending:
             if not self.others_moving():                     # (the play isn't over while a runner is still running)
                 fp.pending_time -= dt
@@ -2493,6 +2706,8 @@ class Game:
         self.update_rare(dt)
         self.update_gait(dt)
         self.age_dust(dt)
+        self.check_close_play()
+        self.close_track()
         if not fp.pending or self.others_moving():
             self.fielder_ai()
         if not fp.pending:
@@ -2560,12 +2775,103 @@ class Game:
     def other_arrives(self, o):
         base = o["target"]
         o["pos"] = float(base)
+        self.close_result(base, not o["auto"] and self.ball_at_base(base))
         if not o["auto"] and self.ball_at_base(base):        # the ball beat him to the bag (he reached it first, THEN he is out)
             o["moving"], o["out"] = False, True
         elif base >= 4 and o["forward"]:
             o["moving"], o["scored"] = False, True
         else:
             o["moving"], o["end"] = False, base
+
+    def check_close_play(self):
+        """A close play: a runner running to a bag is within CLOSE_RUNNER_RANGE of it while the ball (thrown to that bag, or in the
+        hands of a fielder) is within CLOSE_BALL_RADIUS of it. Once per play."""
+        fp, ball = self.fp, self.fp.ball
+        if fp.close_done or fp.pending:
+            return
+        runners = []
+        r = fp.runner
+        if r.moving and r.forward and r.wait <= 0:
+            runners.append((r.target, r.target - r.pos))
+        for o in fp.others:
+            if o["moving"] and o["forward"] and not o["out"] and not o["scored"] and o.get("delay", 0) <= 0:
+                runners.append((o["target"], o["target"] - o["pos"]))
+        if ball.mode == "thrown":
+            u = clamp(ball.t / ball.dur, 0, 1)
+            bx, by = lerp(ball.sx, ball.tx, u), lerp(ball.sy, ball.ty, u)
+        elif ball.mode == "held":
+            f = fp.fielders[ball.holder]
+            bx, by = f.x, f.y
+        else:
+            return
+        for base, gap in runners:
+            if not 1 <= base <= 3 or not 0 < gap <= CLOSE_RUNNER_RANGE:
+                continue
+            bag = BASES[base]
+            if math.hypot(bx - bag[0], by - bag[1]) > CLOSE_BALL_RADIUS:
+                continue
+            if ball.mode == "thrown" and math.hypot(ball.tx - bag[0], ball.ty - bag[1]) > CLOSE_BALL_RADIUS + 25:
+                continue                                     # (that throw is going somewhere else)
+            fp.close, fp.close_done = dict(base=base, t=0.0, result=None, tres=0.0, gap=gap, dist=0.0, dist_res=0.0, skin=SKIN_DEFAULT), True
+            self.close_track()
+            return
+
+    def close_track(self):
+        """Keep the cutscene's numbers up to date: how far the runner is from the bag and how far the ball is."""
+        fp = self.fp
+        c, ball = fp.close, fp.ball
+        if not c or c["result"] is not None:
+            return
+        base, bag = c["base"], BASES[c["base"]]
+        gaps = []
+        r = fp.runner
+        if r.moving and r.forward and r.target == base:
+            gaps.append((r.target - r.pos, fp.skin or SKIN_DEFAULT))
+        for o in fp.others:
+            if o["moving"] and o["forward"] and o["target"] == base and not o["out"] and not o["scored"]:
+                gaps.append((o["target"] - o["pos"], o["skin"] if isinstance(o["skin"], tuple) else SKIN_DEFAULT))
+        if gaps:
+            c["gap"], c["skin"] = min(gaps, key=lambda g: g[0])
+        if ball.mode == "thrown":
+            u = clamp(ball.t / ball.dur, 0, 1)
+            bx, by = lerp(ball.sx, ball.tx, u), lerp(ball.sy, ball.ty, u)
+        elif ball.mode == "held":
+            f = fp.fielders[ball.holder]
+            bx, by = f.x, f.y
+        else:
+            return
+        c["dist"] = math.hypot(bx - bag[0], by - bag[1])
+
+    def close_vals(self):
+        c = self.fp.close
+        if c["result"] is None:
+            return c["gap"], c["dist"]
+        late = c["result"] == "safe"
+        return 0.0, (c["dist_res"] * (1 - clamp(c["tres"] / 0.35, 0, 1)) if late else 0.0)
+
+    def close_cutscene_active(self):
+        c = self.fp.close if self.fp else None
+        if not c or self.view != "field":
+            return False
+        if c["result"] is None:
+            return self.state == "FIELD_PLAY" and c["t"] < 5.0
+        return c["tres"] < CLOSE_SHOW_TIME
+
+    def close_result(self, base, out):
+        c = self.fp.close
+        if c and c["base"] == base and c["result"] is None:
+            c["result"], c["tres"], c["dist_res"] = ("out" if out else "safe"), 0.0, c["dist"]
+
+    def close_slowmo(self, dt):
+        """Real-time clock for the close play; returns the speed the field play should run at (slow motion until the call)."""
+        c = self.fp.close if self.fp else None
+        if not c:
+            return 1.0
+        c["t"] += dt
+        if c["result"] is not None:
+            c["tres"] += dt
+        slow = (c["result"] is None and c["t"] < CLOSE_SLOW_TIME) or (c["result"] is not None and c["tres"] < 1.0)
+        return CLOSE_SLOW if slow else 1.0
 
     def start_tag_ups(self):
         """A fly ball to the outfield was caught: runners on base may TAG UP and go on the throw (a sacrifice fly if the man on
@@ -2629,6 +2935,8 @@ class Game:
         """The play is decided; wait `delay` seconds so the player can see it, then show the result."""
         self.fp.pending, self.fp.pending_time = (outcome, base), delay
         self.fp.runner.moving = False
+        if outcome in ("out", "flyout", "norun"):
+            self.start_dugout_walk()                         # he's out: he turns around right now and heads for the dugout
 
     def decide_standing(self):
         """Play over with the runner standing still: safe on his bag, or out if he never left home."""
@@ -2648,10 +2956,15 @@ class Game:
         r.pos = min(r.pos + step, r.target) if r.forward else max(r.pos - step, r.target)
         if r.pos == r.target:
             self.runner_arrives()                            # he reaches the bag first; only THEN can he be called out
+        elif r.forward and r.target == 1 and r.target - r.pos <= OUT_CALL_RANGE and self.ball_at_base(1):
+            self.close_result(1, True)
+            self.decide("out", 1, 0.9)                       # FORCE OUT at first: the batter MUST run, so the ball beating him there is enough.
+                                                             # (Anywhere else it is a TAG play: he is only out once he actually reaches the bag.)
 
     def runner_arrives(self):
         r = self.fp.runner
         base = r.target
+        self.close_result(base, base > r.earned and self.ball_at_base(base))
         if base > r.earned and self.ball_at_base(base):      # ball beat him to the bag
             return self.decide("out", base, 0.9)
         if base >= 4:
@@ -2789,6 +3102,8 @@ class Game:
     def start_dugout_walk(self):
         """The batter made an out: he heads for the nearer dugout (he doesn't have to get there before the next pitch)."""
         fp = self.fp
+        if fp.walk:
+            return                                           # (already on his way)
         fp.runner.sliding = False                            # (no more sliding on the ground once he is out)
         fp.runner.moving = False
         sx, sy = point_on_path(fp.runner.pos)
@@ -3152,13 +3467,13 @@ class Game:
             self.stats["robbed"] += 1
             self.credit()
             self.streak = 0
-            self.spray.append((HOME[0] + self.hit.sideways * 1.2, 300, "out"))
+            self.spray.append(spray_hr_xy(self.hit.sideways, ROB_MAX_FT - 20) + ("out",))
             self.cheer_cpu(0.9)
             self.record_out("ROBBED!", "Leaps and steals a home run at the wall!")
             return
         if self.hit:
             self.credit(hit=True, hr=True)
-            self.spray.append((HOME[0] + self.hit.sideways * 1.6, 262, "hr"))
+            self.spray.append(spray_hr_xy(self.hit.sideways, self.hr_distance) + ("hr",))
             if self.hr_distance >= FLIP_MIN_FT:
                 self.stats["long_hr"] = max(self.stats["long_hr"], self.hr_distance)
         runs = 1 + sum(1 for b in self.bases if b)
@@ -3207,6 +3522,7 @@ class Game:
             self.cheer_cpu(0.9)                                            # the CPU scored: its dugout is up
         self.inning_start_runs = self.runs
         if self.inning >= self.innings and self.runs != self.cpu_runs:     # tied after the last inning = extra innings
+            record_game(self)
             self.set_state("GAME_OVER")
             return
         stretch = self.inning == STRETCH_INNING and self.innings > STRETCH_INNING
@@ -3282,11 +3598,12 @@ class Game:
             if self.hit.time >= self.hit.flight:
                 self.home_run()
         elif self.state == "FIELD_PLAY":
-            self.update_field_play(dt)
+            self.update_field_play(dt * self.close_slowmo(dt))
         elif self.state == "MESSAGE" and self.state_time > self.message_duration and not self.wait_click:
             self.continue_after_message()
         if self.state == "MESSAGE" and self.fp and self.view == "field":
             self.update_rare(dt, allow_trigger=False)        # let a dive / leap / bat finish while the result is shown
+            self.close_slowmo(dt)                            # (and the umpire's call stays up a moment)
             self.update_walk(dt)                             # an out: the batter strolls toward the dugout
             self.update_gait(dt)                             # (his step cycle + a little dust under his feet)
             self.age_dust(dt)
@@ -3295,6 +3612,10 @@ class Game:
     def draw(self, canvas):
         if self.state == "HR_CUTSCENE":
             self.draw_slugger_cutscene(canvas)
+        elif self.fp and self.close_cutscene_active():
+            gap, dist = self.close_vals()
+            c = self.fp.close
+            draw_close_cutscene(canvas, gap, dist, c["result"], c["tres"], c["t"], c["skin"], self.team_color)
         elif self.view == "bat":
             self.draw_bat_view(self.bat_surface)
             bat_h = int(LOGICAL_W * BAT_H / BAT_W)
@@ -3389,16 +3710,29 @@ class Game:
         pygame.draw.rect(surf, BLACK, (0, LOGICAL_H - 48, LOGICAL_W, 48))
 
     # ---- pause menu + animation gallery ----------------------------------------
-    PAUSE_OPTIONS = ("Resume", "Difficulty", "Animations", "Restart Game", "Quit to Title")
+    PAUSE_OPTIONS = ("Resume", "Roster", "Difficulty", "Animations", "Restart Game", "Quit to Title")
     BACK_RECT = pygame.Rect(60, 650, 200, 46)
     PREVIEW_RECT = pygame.Rect(480, 130, 740, 416)           # 16:9 window the gallery plays animations in
 
     def pause_rects(self):
         return [pygame.Rect(450, 250 + i * 62, 380, 52) for i in range(len(self.PAUSE_OPTIONS))]
 
+    PREV_RECT, NEXT_RECT = pygame.Rect(290, 650, 70, 46), pygame.Rect(370, 650, 70, 46)
+
+    def gallery_page(self):
+        return self.anim_index // ANIM_PAGE
+
+    def gallery_pages(self):
+        return (len(ANIMATIONS) + ANIM_PAGE - 1) // ANIM_PAGE
+
     def gallery_rects(self):
-        step = min(76, 480 // len(ANIMATIONS))              # squeeze the buttons together as the list grows
-        return [pygame.Rect(60, 140 + i * step, 380, step - 8) for i in range(len(ANIMATIONS))]
+        """The buttons on the current page (ANIM_PAGE animations per page)."""
+        count = min(ANIM_PAGE, len(ANIMATIONS) - self.gallery_page() * ANIM_PAGE)
+        return [pygame.Rect(60, 140 + i * 76, 380, 68) for i in range(count)]
+
+    def gallery_flip(self, step):
+        page = (self.gallery_page() + step) % self.gallery_pages()
+        self.anim_index, self.anim_clock = page * ANIM_PAGE, 0.0
 
     def toggle_pause(self):
         self.paused = not self.paused
@@ -3413,6 +3747,8 @@ class Game:
             self.set_difficulty(names[(names.index(self.difficulty) + 1) % len(names)])
         elif option == "Animations":
             self.pause_screen, self.anim_clock = "anims", 0.0
+        elif option == "Roster":
+            self.pause_screen = "roster"
         elif option == "Restart Game":
             self.configure(self.team_name, self.team_color, self.difficulty, self.innings, self.home_logo)     # a fresh game (also unpauses)
         else:
@@ -3421,7 +3757,10 @@ class Game:
     def pause_key(self, key):
         if key == pygame.K_p:
             return self.toggle_pause()
-        if self.pause_screen == "main":
+        if self.pause_screen == "roster":
+            if key in (pygame.K_BACKSPACE, pygame.K_LEFT, pygame.K_RETURN, pygame.K_SPACE):
+                self.pause_screen = "main"
+        elif self.pause_screen == "main":
             if key == pygame.K_UP:
                 self.pause_index = (self.pause_index - 1) % len(self.PAUSE_OPTIONS)
             elif key == pygame.K_DOWN:
@@ -3435,7 +3774,11 @@ class Game:
                 self.anim_index, self.anim_clock = (self.anim_index + 1) % len(ANIMATIONS), 0.0
             elif key in (pygame.K_RETURN, pygame.K_SPACE):
                 self.anim_clock = 0.0                        # replay
-            elif key in (pygame.K_BACKSPACE, pygame.K_LEFT):
+            elif key == pygame.K_LEFT:
+                self.gallery_flip(-1)
+            elif key == pygame.K_RIGHT:
+                self.gallery_flip(1)
+            elif key == pygame.K_BACKSPACE:
                 self.pause_screen = "main"
 
     def pause_hover(self, pos):
@@ -3453,14 +3796,59 @@ class Game:
                     self.pause_index = i
                     self.pause_choose(i)
                     return
+        elif self.pause_screen == "roster":
+            if self.BACK_RECT.collidepoint(pos):
+                self.pause_screen = "main"
         else:
             if self.BACK_RECT.collidepoint(pos):
                 self.pause_screen = "main"
+            elif self.PREV_RECT.collidepoint(pos):
+                self.gallery_flip(-1)
+            elif self.NEXT_RECT.collidepoint(pos):
+                self.gallery_flip(1)
             elif self.PREVIEW_RECT.collidepoint(pos):
                 self.anim_clock = 0.0
             for i, rect in enumerate(self.gallery_rects()):
                 if rect.collidepoint(pos):
-                    self.anim_index, self.anim_clock = i, 0.0
+                    self.anim_index, self.anim_clock = self.gallery_page() * ANIM_PAGE + i, 0.0
+
+    def draw_roster(self, surf):
+        """Every player in the batting order with today's line (H-AB, AVG, HR) and his three ratings, plus team totals."""
+        surf.fill((12, 16, 36))
+        draw_text(surf, f"{self.team_name} ROSTER", 640, 78, 44, GOLD)
+        cols = dict(num=118, name=172, ab=500, h=570, avg=665, hr=765, pwr=840, con=960, spd=1080)
+        for key, label in (("num", "#"), ("name", "PLAYER"), ("ab", "AB"), ("h", "H"), ("avg", "AVG"), ("hr", "HR"),
+                           ("pwr", "POWER"), ("con", "CONTACT"), ("spd", "SPEED")):
+            draw_text(surf, label, cols[key], 132, 14, (200, 205, 225), outline=False, align="left")
+        tot_ab = tot_h = tot_hr = 0
+        for i, b in enumerate(self.lineup):
+            rect = pygame.Rect(100, 144 + i * 46, 1080, 40)
+            up = i == self.batter_i
+            pygame.draw.rect(surf, (52, 62, 112) if up else (30, 38, 74) if i % 2 else (24, 30, 62), rect, border_radius=8)
+            if up:
+                pygame.draw.rect(surf, GOLD, rect, 2, border_radius=8)
+            base = rect.centery + 7
+            avg = "---" if not b["ab"] else "1.000" if b["h"] >= b["ab"] else f".{int(1000 * b['h'] / b['ab']):03d}"
+            pygame.draw.circle(surf, b["skin"], (rect.x + 8, rect.centery), 6)
+            draw_text(surf, f"{b['num']}", cols["num"], base, 17, GOLD if up else WHITE, align="left")
+            draw_text(surf, b["name"].upper(), cols["name"], base, 18, WHITE, align="left")
+            for key, value in (("ab", b["ab"]), ("h", b["h"]), ("avg", avg), ("hr", b["hr"])):
+                draw_text(surf, str(value), cols[key], base, 18, WHITE, align="left")
+            for key, value in (("pwr", b["power"]), ("con", b["contact"]), ("spd", b["speed"])):
+                for k in range(5):
+                    pygame.draw.rect(surf, GOLD if k < pips(value) else (70, 76, 98), (cols[key] + k * 14, rect.centery - 6, 10, 12), border_radius=2)
+            if up:
+                draw_text(surf, "AT BAT", rect.x - 8, base - 1, 14, GOLD, align="right")        # outside the box, on its left
+            tot_ab += b["ab"]
+            tot_h += b["h"]
+            tot_hr += b["hr"]
+        st = self.stats
+        avg = "---" if not tot_ab else "1.000" if tot_h >= tot_ab else f".{int(1000 * tot_h / tot_ab):03d}"
+        long_hr = f"   |   LONGEST HR {st['long_hr']} FT" if st["long_hr"] else ""
+        draw_text(surf, f"TEAM   R {self.runs}   |   H-AB {tot_h}-{tot_ab}   AVG {avg}   |   HR {tot_hr}   |   BB {st['bb']}   K {st['k']}"
+                        f"   |   SB {st['steals']}/{st['steal_att']}{long_hr}", 640, 590, 16, GOLD)
+        self.draw_pause_button(surf, self.BACK_RECT, "BACK", False)
+        draw_text(surf, "ENTER / BACKSPACE: back   P: resume", 640, 690, 13, (200, 205, 225))
 
     def draw_pause_button(self, surf, rect, label, selected):
         pygame.draw.rect(surf, TEAL if selected else (34, 42, 80), rect, border_radius=12)
@@ -3470,6 +3858,8 @@ class Game:
     def draw_pause(self, surf):
         if self.pause_screen == "anims":
             return self.draw_gallery(surf)
+        if self.pause_screen == "roster":
+            return self.draw_roster(surf)
         shade = pygame.Surface((LOGICAL_W, LOGICAL_H), pygame.SRCALPHA)
         shade.fill((0, 0, 0, 170))
         surf.blit(shade, (0, 0))
@@ -3484,7 +3874,8 @@ class Game:
         """Every animation, on demand: pick one on the left and it loops in the window on the right."""
         surf.fill((12, 16, 36))
         draw_text(surf, "ANIMATIONS", 640, 92, 46, GOLD)
-        for i, (rect, (name, _, _)) in enumerate(zip(self.gallery_rects(), ANIMATIONS)):
+        first = self.gallery_page() * ANIM_PAGE
+        for i, (rect, (name, _, _)) in enumerate(zip(self.gallery_rects(), ANIMATIONS[first:]), start=first):
             selected = i == self.anim_index
             pygame.draw.rect(surf, TEAL if selected else (34, 42, 80), rect, border_radius=10)
             pygame.draw.rect(surf, WHITE if selected else (110, 120, 160), rect, 2, border_radius=10)
@@ -3494,14 +3885,18 @@ class Game:
         t = min(self.anim_clock % (duration + 0.8), duration)             # plays, pauses a moment, loops
         scene = self.preview_scene
         (self.scene_slugger, self.scene_dive, self.scene_leap, self.scene_broken_bat,
-         self.scene_fan, self.scene_board, self.scene_robbed, self.scene_flip, self.scene_fire)[self.anim_index](scene, t)
+         self.scene_fan, self.scene_board, self.scene_robbed, self.scene_flip, self.scene_fire,
+         lambda sc, tt: self.scene_close(sc, tt, "safe"), lambda sc, tt: self.scene_close(sc, tt, "out"))[self.anim_index](scene, t)
         surf.blit(pygame.transform.smoothscale(scene, self.PREVIEW_RECT.size), self.PREVIEW_RECT.topleft)
         pygame.draw.rect(surf, WHITE, self.PREVIEW_RECT.inflate(8, 8), 3)
         cx = self.PREVIEW_RECT.centerx
         draw_text(surf, name, cx, 590, 26, GOLD)
         draw_text(surf, info, cx, 620, 16)
         self.draw_pause_button(surf, self.BACK_RECT, "BACK", False)
-        draw_text(surf, "UP/DOWN: choose   ENTER or click window: replay   BACKSPACE: back   P: resume", cx, 690, 13, (200, 205, 225))
+        self.draw_pause_button(surf, self.PREV_RECT, "<", False)
+        self.draw_pause_button(surf, self.NEXT_RECT, ">", False)
+        draw_text(surf, f"PAGE {self.gallery_page() + 1}/{self.gallery_pages()}", 365, 636, 20, WHITE)
+        draw_text(surf, "UP/DOWN: choose   LEFT/RIGHT: page   ENTER or click window: replay   BACKSPACE: back   P: resume", cx, 690, 13, (200, 205, 225))
 
     # ---- the gallery scenes: each one re-creates a rare animation at time t ------
     def scene_slugger(self, scene, t):
@@ -3542,6 +3937,15 @@ class Game:
             draw_text(scene, "DIVING STOP!", fx, fy - 70, 28, GOLD)
         if t >= 2.45:
             draw_text(scene, "OUT at FIRST", 640, 140, 56)
+
+    def scene_close(self, scene, t, result):
+        """The close-play cutscene, re-created for the gallery: the runner dives, the ball comes in, the call is made."""
+        arrive = 2.0
+        gap = 0.5 * (1 - smooth(clamp(t / arrive, 0, 1)))
+        ball_arrives = arrive - 0.15 if result == "out" else arrive + 0.2
+        dist = CLOSE_BALL_RADIUS * 1.2 * (1 - smooth(clamp(t / ball_arrives, 0, 1)))
+        done = t >= arrive
+        draw_close_cutscene(scene, gap, dist, result if done else None, max(0.0, t - arrive), t, self.skin, self.team_color)
 
     def scene_leap(self, scene, t):
         """A deep fly ball to center: the fielder leaps and makes the catch at the top of his jump."""
@@ -3613,7 +4017,8 @@ class Game:
         self.board_time = bt if kind == "board" and bt >= 0 else -1.0
         draw_bat_scoreboard(bat, self)
         self.board_time = saved
-        draw_bat_fielders(bat)
+        rob_rx = clamp(BAT_RELEASE_POINT[0] + 8 + sideways, 90, 680)
+        draw_bat_fielders(bat, rob_fielder(rob_rx) if kind == "rob" and t >= contact else None)
         pitch = Pitch("Fastball", contact if kind != "fire" else 0.45, 95, True)
         swing = t - (contact - 0.12)
         hit = Hit("HR", "perfect", BAT_RELEASE_POINT[0] + 8, 332, sideways, flight, 0, distance=distance)
@@ -3622,6 +4027,7 @@ class Game:
         u = hit.time / flight
         if kind == "fan":
             draw_fan(bat, hit.start_x + hit.sideways, hr_end_y(hit.distance), clamp((u - 0.7) / 0.3, 0, 1), t, u >= 1)
+            draw_bat_wall(bat)                                            # the wall is in front of him: he is in the stands
         if t < contact:                                                   # the pitch on its way in
             pitch_t = t - (contact - 0.45)
             if pitch_t >= 0:
@@ -3640,7 +4046,8 @@ class Game:
         if kind == "rob":
             rx = clamp(hit.start_x + hit.sideways, 90, 680)
             jump = ROB_JUMP * math.sin(clamp((u - 0.55) / 0.45, 0, 1) * math.pi * 0.5)
-            glove = draw_wall_robber(bat, rx, jump, self.fielder_skins["CF"])
+            _, rpx, rpy = robber_pos(rx, u)
+            glove = draw_wall_robber(bat, rpx, jump, self.fielder_skins["CF"], rpy)
             if u >= 1:
                 draw_bat_ball(bat, glove[0], glove[1] - 4, 5)
         if kind == "fire" and t < contact + 0.6:
@@ -3679,7 +4086,8 @@ class Game:
         self.blit_bat_scene(surf)
         draw_bat_scoreboard(surf, self)
         draw_base_indicator(surf, 60, 88, self.bases, self.steal_armed)
-        draw_bat_fielders(surf)
+        robbing = bool(self.hit and self.hit.robbed and (self.state == "BALL_IN_FLIGHT" or self.state == "MESSAGE" and self.message == "ROBBED!"))
+        draw_bat_fielders(surf, rob_fielder(clamp(self.hit.start_x + self.hit.sideways, 90, 680)) if robbing else None)
         if self.state == "WIND_UP":
             delivery = min(1, self.state_time / WIND_UP_TIME)
         elif self.state == "PITCH":
@@ -3700,6 +4108,7 @@ class Game:
         if self.fan and self.state in ("BALL_IN_FLIGHT", "MESSAGE"):     # rare animation: a fan catches the home run
             u = min(1.0, self.hit.time / self.hit.flight)
             draw_fan(surf, self.fan[0], self.fan[1], clamp((u - 0.7) / 0.3, 0, 1), self.clock, u >= 1)
+            draw_bat_wall(surf)                                              # he is up in the stands, behind the wall
         if self.state == "BALL_IN_FLIGHT":
             x, y, r = hr_position(self.hit)
             draw_bat_ball(surf, x, y, r)
@@ -3713,7 +4122,8 @@ class Game:
         if self.hit and self.hit.robbed and (self.state == "BALL_IN_FLIGHT" or self.state == "MESSAGE" and self.message == "ROBBED!"):
             u = clamp(self.hit.time / self.hit.flight, 0, 1) if self.state == "BALL_IN_FLIGHT" else 1.0
             rx = clamp(self.hit.start_x + self.hit.sideways, 90, 680)
-            glove = draw_wall_robber(surf, rx, ROB_JUMP * math.sin(clamp((u - 0.55) / 0.45, 0, 1) * math.pi * 0.5 + (0 if u < 1 else 0)), self.fielder_skins["CF"])
+            _, rpx, rpy = robber_pos(rx, u)
+            glove = draw_wall_robber(surf, rpx, ROB_JUMP * math.sin(clamp((u - 0.55) / 0.45, 0, 1) * math.pi * 0.5), self.fielder_skins["CF"], rpy)
             if self.state == "MESSAGE":
                 draw_bat_ball(surf, glove[0], glove[1] - 4, 5)
         if self.weather in ("Night", "Rain"):
@@ -3744,12 +4154,20 @@ class Game:
     def draw_weather(self, surf):
         w, h = surf.get_size()
         if self.weather == "Night":
-            key = (w, h, "n")
+            key = (w, h, "night")
             if key not in self._overlays:
-                shade = pygame.Surface((w, h), pygame.SRCALPHA)
-                shade.fill((8, 14, 46, 120))
-                self._overlays[key] = shade
-            surf.blit(self._overlays[key], (0, 0))
+                self._overlays[key] = build_night_overlay(w, h)
+            ov = self._overlays[key]
+            surf.blit(ov["dark"], (0, 0))                                # dark around the edges...
+            surf.blit(ov["beams"], (0, 0))                               # ...light shafts from the towers...
+            surf.blit(ov["glow"], (0, 0), special_flags=pygame.BLEND_RGB_ADD)    # ...and the field itself glowing under the lights
+            for i, (lx, ly) in enumerate(ov["lights"]):
+                shimmer = int((math.sin(self.clock * 6 + i * 2.3) + 1) * 1.49)      # 0, 1 or 2
+                surf.blit(ov["flares"][shimmer], (lx - ov["radius"], ly - ov["radius"]), special_flags=pygame.BLEND_RGB_ADD)
+                for b in range(3):                                       # moths circling each light
+                    a = self.clock * (1.6 + b * 0.7) + i * 1.9 + b * 2.1
+                    r = ov["radius"] * (0.45 + 0.25 * math.sin(a * 0.7 + b))
+                    pygame.draw.circle(surf, (255, 250, 210), (lx + r * math.cos(a), ly + r * 0.7 * math.sin(a * 1.3)), 1)
         elif self.weather == "Rain":
             key = (w, h, "r")
             if key not in self._overlays:
@@ -3788,11 +4206,11 @@ class Game:
         shade = pygame.Surface((LOGICAL_W, LOGICAL_H), pygame.SRCALPHA)
         shade.fill((0, 0, 0, 205))
         surf.blit(shade, (0, 0))
-        draw_text(surf, f"FINAL  {self.team_name[:10]} {self.runs}  -  {self.cpu_runs} CPU", 640, 110, 42)
+        draw_text(surf, f"FINAL:  {self.team_name[:10]} {self.runs}  -  {self.cpu_runs} CPU", 640, 112, 34)
         result = f"{self.team_name} win!" if self.runs > self.cpu_runs else "CPU wins" if self.runs < self.cpu_runs else "Tie game"
         draw_text(surf, result, 640, 158, 30, GOLD)
-        draw_logo(surf, self.home_logo, 236, 70, 72)
-        draw_logo(surf, self.cpu_logo, 972, 70, 72)
+        draw_logo(surf, self.home_logo, 120, 70, 72)
+        draw_logo(surf, self.cpu_logo, 1088, 70, 72)
         # line score
         n = max(len(self.my_line), len(self.cpu_line), 1)
         col_w = min(56, 560 // n)
@@ -3814,14 +4232,14 @@ class Game:
         st = self.stats
         left = [("Hits", st["hits"]), ("Home runs", st["hr"]), ("Perfect swings", st["perfect"])]
         right = [("Strikeouts", st["k"]), ("Walks", st["bb"]), ("Stolen bases", f"{st['steals']}/{st['steal_att']}")]
-        draw_text(surf, "YOUR STATS", 620, 392, 20, GOLD)
+        draw_text(surf, "YOUR STATS", 715, 400, 20, GOLD)
         for i, (label, value) in enumerate(left):
-            draw_text(surf, f"{label}: {value}", 420, 436 + i * 36, 22, align="left")
+            draw_text(surf, f"{label}: {value}", 470, 450 + i * 42, 19, align="left")
         for i, (label, value) in enumerate(right):
-            draw_text(surf, f"{label}: {value}", 740, 436 + i * 36, 22, align="left")
+            draw_text(surf, f"{label}: {value}", 760, 450 + i * 42, 19, align="left")
         draw_text(surf, "Longest HR: " + (f"{st['long_hr']} ft" if st["long_hr"] else "-") + f"   Best hot streak: {st['best_streak']}"
-                  + f"   Errors: {st['errors']}  DP: {st['dp']}  SF: {st['sf']}  Robbed: {st['robbed']}", 640, 600, 14, (210, 215, 235))
-        self.draw_spray_chart(surf, 20, 396, 330, 190)
+                  + f"   Errors: {st['errors']}  DP: {st['dp']}  SF: {st['sf']}  Robbed: {st['robbed']}", 640, 660, 14, (210, 215, 235))
+        self.draw_spray_chart(surf, 20, 392, 400, 250)
         bx = 1010
         draw_text(surf, "BOX SCORE", bx + 90, 392, 16, GOLD)
         draw_text(surf, "AB  H  HR", bx + 262, 392, 11, (200, 205, 225), align="right")
@@ -3829,23 +4247,59 @@ class Game:
             y = 414 + i * 20
             draw_text(surf, f"{i + 1}. {b['name']}", bx, y + 8, 12, align="left", outline=False)
             draw_text(surf, f"{b['ab']}   {b['h']}   {b['hr']}", bx + 262, y + 8, 12, align="right", outline=False)
-        draw_text(surf, "Click or press SPACE for the title screen", 640, 660, 18)
+        draw_text(surf, "Click or press SPACE for the title screen", 640, 690, 18)
 
     def draw_spray_chart(self, surf, x, y, w, h):
-        """Every ball you put in play: green = hit, red = out, gold = home run."""
-        pygame.draw.rect(surf, (20, 60, 28), (x, y, w, h), border_radius=8)
-        pygame.draw.rect(surf, (110, 120, 160), (x, y, w, h), 2, border_radius=8)
-        draw_text(surf, "SPRAY CHART", x + w / 2, y + 14, 13, GOLD)
-        sx, sy = w / 1280, (h - 26) / 520
+        """Every ball you put in play on a little field: green = hit, red = out, gold = home run (past the wall)."""
+        pygame.draw.rect(surf, (14, 22, 34), (x, y, w, h), border_radius=10)
+        pygame.draw.rect(surf, (110, 120, 160), (x, y, w, h), 2, border_radius=10)
+        hits = sum(1 for p in self.spray if p[2] == "hit")
+        hrs = sum(1 for p in self.spray if p[2] == "hr")
+        outs = len(self.spray) - hits - hrs
+        draw_text(surf, "SPRAY CHART", x + 14, y + 16, 14, GOLD, align="left")
+        draw_text(surf, f"{len(self.spray)} in play", x + w - 14, y + 16, 12, (200, 205, 225), outline=False, align="right")
+        k = min((h - 58) / SPRAY_MAX_PX, (w - 30) / (SPRAY_MAX_PX * 1.8))
+        ox, oy = x + w / 2, y + h - 22
         def pt(px, py):
-            return int(x + clamp(px, 0, 1280) * sx), int(y + 24 + (clamp(py, 220, 700) - 200) * sy)
-        pygame.draw.polygon(surf, (150, 105, 60), [pt(*BASES[0]), pt(*BASES[1]), pt(*BASES[2]), pt(*BASES[3])], 1)
-        pygame.draw.line(surf, (60, 120, 60), pt(*BASES[0]), pt(80, 230), 1)
-        pygame.draw.line(surf, (60, 120, 60), pt(*BASES[0]), pt(1200, 230), 1)
+            return ox + (px - HOME[0]) * k, oy + (py - HOME[1]) * k
+        a_l, a_r = math.atan2(U_LEFT[0], -U_LEFT[1]), math.atan2(U_RIGHT[0], -U_RIGHT[1])
+        def arc(frac, n=28):
+            return [(ox + math.sin(a_l + (a_r - a_l) * i / n) * SPRAY_MAX_PX * frac * k,
+                     oy - math.cos(a_l + (a_r - a_l) * i / n) * SPRAY_MAX_PX * frac * k) for i in range(n + 1)]
+        pygame.draw.polygon(surf, (58, 62, 78), [(ox, oy)] + arc(1.0))                      # the stands
+        pygame.draw.polygon(surf, (44, 120, 52), [(ox, oy)] + arc(SPRAY_FENCE))             # the grass
+        pygame.draw.polygon(surf, (52, 138, 60), [(ox, oy)] + arc(0.62))                    # mown stripe
+        pygame.draw.polygon(surf, (44, 120, 52), [(ox, oy)] + arc(0.5))
+        pygame.draw.lines(surf, (230, 230, 120), False, arc(SPRAY_FENCE), 2)                # the wall
+        pygame.draw.polygon(surf, (176, 124, 76), [pt(*BASES[0]), pt(*BASES[1]), pt(*BASES[2]), pt(*BASES[3])])
+        pygame.draw.polygon(surf, (56, 140, 64), [pt(*BASES[0]), pt(*BASES[1]), pt(*BASES[2]), pt(*BASES[3])], 0) if False else None
+        mid = (sum(b[0] for b in BASES[:4]) / 4, sum(b[1] for b in BASES[:4]) / 4)           # the infield grass: the dirt diamond shrunk about its
+        inner = [pt(mid[0] + (b[0] - mid[0]) * 0.62, mid[1] + (b[1] - mid[1]) * 0.62) for b in BASES[:4]]   # centre, so every edge runs parallel to the dirt's
+        pygame.draw.polygon(surf, (50, 130, 58), inner)
+        for ang in (a_l, a_r):                                                                # foul lines
+            pygame.draw.line(surf, WHITE, (ox, oy), (ox + math.sin(ang) * SPRAY_MAX_PX * k, oy - math.cos(ang) * SPRAY_MAX_PX * k), 1)
+        for b in BASES[1:4]:
+            bx, by = pt(*b)
+            pygame.draw.rect(surf, WHITE, (bx - 3, by - 3, 6, 6))
+        pygame.draw.polygon(surf, WHITE, [(ox - 3, oy), (ox + 3, oy), (ox + 3, oy + 3), (ox, oy + 6), (ox - 3, oy + 3)])
+        mx, my = pt(*MOUND)
+        pygame.draw.circle(surf, (190, 140, 90), (mx, my), 4)
         for px, py, kind in self.spray:
-            color = GOLD if kind == "hr" else GREEN if kind == "hit" else RED
-            pygame.draw.circle(surf, color, pt(px, py), 4)
-            pygame.draw.circle(surf, WHITE, pt(px, py), 4, 1)
+            cx, cy = pt(px, py)
+            if kind == "hr":
+                pygame.draw.circle(surf, GOLD, (cx, cy), 7)
+                pygame.draw.circle(surf, WHITE, (cx, cy), 7, 2)
+                pygame.draw.circle(surf, (120, 80, 0), (cx, cy), 2)
+            elif kind == "hit":
+                pygame.draw.circle(surf, GREEN, (cx, cy), 5)
+                pygame.draw.circle(surf, WHITE, (cx, cy), 5, 1)
+            else:
+                pygame.draw.line(surf, RED, (cx - 4, cy - 4), (cx + 4, cy + 4), 3)
+                pygame.draw.line(surf, RED, (cx - 4, cy + 4), (cx + 4, cy - 4), 3)
+        for i, (label, color, n) in enumerate((("HITS", GREEN, hits), ("OUTS", RED, outs), ("HR", GOLD, hrs))):
+            ly = y + 38 + i * 18
+            pygame.draw.circle(surf, color, (x + 18, ly), 5)
+            draw_text(surf, f"{label} {n}", x + 28, ly + 5, 12, WHITE, outline=False, align="left")
 
     # ---- overhead field view --------------------------------------------------
     def draw_field_view(self, surf):
@@ -4008,9 +4462,21 @@ class Menu:
         self.swatches = [(323 + i * 62, 448) for i in range(len(TEAM_COLORS))]
         self.diff_rects = {name: pygame.Rect(299 + i * 166, 514, 150, 42) for i, name in enumerate(DIFFICULTIES)}
         self.inning_rects = {n: pygame.Rect(822 + i * 56, 606, 48, 38) for i, n in enumerate(INNING_OPTIONS)}
+        self.screen = "home"                                 # "home" (the exhibition setup) or "scores" (the high-score board)
+        self.toast, self.toast_t = "", 0.0
+        self.raw_mouse = (-1, -1)
+        self.side_rects = [pygame.Rect(40, 300 + i * 78, 250, 62) for i in range(4)]
+        self.back_rect = pygame.Rect(60, 560, 150, 40)
+        self.clear_scores_rect = pygame.Rect(540, 642, 200, 32)
+        self.clear_armed = 0.0
+        self.score_diff, self.score_open = "Hard", False     # the high-score board's difficulty drop-down (opens on Hard)
+        self.score_box = pygame.Rect(790, 296, 240, 36)
+        self.score_items = {name: pygame.Rect(790, 336 + i * 38, 240, 36) for i, name in enumerate(DIFFICULTIES)}
         self.start_rect = pygame.Rect(400, 623, 280, 54)
         self.bat_choice = 0                                  # 0 = mixed (every hitter his own bat), else the whole team uses that bat
         self.bat_rect = pygame.Rect(850, 546, 160, 30)
+        self.weather_choice = "Random"                       # Random, Clear, Night, Rain or Windy
+        self.weather_rect = pygame.Rect(692, 640, 122, 34)
         # logo drawing patch
         self.patch_rect = pygame.Rect(858, 330, 144, 144)          # 3 screen pixels per logo pixel
         self.pen_pos = [(852 + i * 26, 494) for i in range(len(PEN_COLORS) + 1)]     # last one is the eraser
@@ -4044,11 +4510,14 @@ class Menu:
             self.difficulty = data["difficulty"]
         if data.get("innings") in INNING_OPTIONS:
             self.innings = data["innings"]
+        if data.get("weather") in WEATHER_OPTIONS:
+            self.weather_choice = data["weather"]
 
     def save_settings(self):
         """Remember the start-screen choices (saved when you press PLAY BALL, just like the logo)."""
         data = {"team_name": self.name, "team_color": TEAM_COLORS[self.color_index][0],
-                "difficulty": self.difficulty, "innings": self.innings, "bat_choice": self.bat_choice}
+                "difficulty": self.difficulty, "innings": self.innings, "bat_choice": self.bat_choice,
+                "weather": self.weather_choice}
         try:
             with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
@@ -4127,16 +4596,60 @@ class Menu:
     def team_color(self):
         return TEAM_COLORS[self.color_index][1]
 
+    DX = 110                                                 # the setup panel sits this far to the right (the options are on the left)
+    SIDE_LABELS = ("EXHIBITION", "HR DERBY", "HIGH-SCORE", "QUIT")
+
+    def side_click(self, i):
+        if i == 0:
+            self.screen = "home"
+        elif i == 1:
+            self.toast, self.toast_t = "HR DERBY is coming soon!", 2.2
+        elif i == 2:
+            self.screen = "scores"
+        else:
+            pygame.quit()
+            sys.exit()
+
     def handle_event(self, event, to_canvas):
         """Returns True when the player chooses to start the game."""
+        if event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN):
+            self.raw_mouse = to_canvas(event.pos)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for i, rect in enumerate(self.side_rects):
+                if rect.collidepoint(self.raw_mouse):
+                    self.side_click(i)
+                    return False
         if event.type == pygame.MOUSEMOTION:
-            self.mouse = to_canvas(event.pos)
+            self.mouse = (self.raw_mouse[0] - self.DX, self.raw_mouse[1])
+        if self.screen == "scores":                          # the high-score board only has its own buttons
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                pos = (self.raw_mouse[0] - self.DX, self.raw_mouse[1])
+                if self.score_open:                          # an open drop-down takes the click
+                    for name, rect in self.score_items.items():
+                        if rect.collidepoint(pos):
+                            self.score_diff, self.clear_armed = name, 0.0
+                    self.score_open = False
+                elif self.score_box.collidepoint(pos):
+                    self.score_open = True
+                elif self.clear_scores_rect.collidepoint(pos):
+                    if self.clear_armed > 0:                 # (click twice to confirm; clears the board being shown)
+                        data = load_scores()
+                        data["scores"][self.score_diff] = {"records": {}, "totals": {}}
+                        save_scores(data)
+                        self.clear_armed = 0.0
+                    else:
+                        self.clear_armed = 2.5
+            elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE, pygame.K_RETURN, pygame.K_SPACE):
+                self.screen, self.score_open = "home", False
+            return False
+        if event.type == pygame.MOUSEMOTION:
+            self.mouse = (self.raw_mouse[0] - self.DX, self.raw_mouse[1])
             if self.drawing and event.buttons[0]:
                 self.stroke(self.mouse)
         elif event.type == pygame.MOUSEBUTTONUP:
             self.drawing, self.last_pt = False, None
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            pos = self.mouse = to_canvas(event.pos)
+            pos = self.mouse = (self.raw_mouse[0] - self.DX, self.raw_mouse[1])
             self.click_logo_tools(pos)
             for i, (cx, cy) in enumerate(self.swatches):
                 if math.hypot(pos[0] - cx, pos[1] - cy) <= 26:
@@ -4147,6 +4660,8 @@ class Menu:
             for n, rect in self.inning_rects.items():
                 if rect.collidepoint(pos):
                     self.innings = n
+            if self.weather_rect.collidepoint(pos):
+                self.cycle_weather()
             if self.start_rect.collidepoint(pos):
                 return True
         elif event.type == pygame.KEYDOWN:
@@ -4163,14 +4678,21 @@ class Menu:
                 self.difficulty = names[(names.index(self.difficulty) - 1) % len(names)]
             elif event.key == pygame.K_DOWN:
                 self.difficulty = names[(names.index(self.difficulty) + 1) % len(names)]
+            elif event.key == pygame.K_TAB and event.mod & pygame.KMOD_SHIFT:
+                self.cycle_weather()
             elif event.key == pygame.K_TAB:
                 self.innings = INNING_OPTIONS[(INNING_OPTIONS.index(self.innings) + 1) % len(INNING_OPTIONS)]
             elif event.unicode and len(self.name) < MAX_NAME_LENGTH and (event.unicode.isalnum() or event.unicode in " -'.!&"):
                 self.name += event.unicode.upper()
         return False
 
+    def cycle_weather(self):
+        self.weather_choice = WEATHER_OPTIONS[(WEATHER_OPTIONS.index(self.weather_choice) + 1) % len(WEATHER_OPTIONS)]
+
     def update(self, dt):
         self.t += dt
+        self.toast_t = max(0.0, self.toast_t - dt)
+        self.clear_armed = max(0.0, self.clear_armed - dt)
         if random.random() < dt * 8:
             self.flashes.append(dict(x=random.uniform(20, LOGICAL_W - 20), y=random.uniform(176, 300), life=0.4, max=0.4))
         for f in self.flashes:
@@ -4188,6 +4710,11 @@ class Menu:
         draw_bolt(surf, 120, 150, 190, False, self.t)
         draw_bolt(surf, 1160, 150, 190, True, self.t)
         draw_title(surf, self.title, 640, 150 + 4 * math.sin(self.t * 2), self.t)
+        main, surf = surf, pygame.Surface((LOGICAL_W, LOGICAL_H), pygame.SRCALPHA)       # the panel is drawn on its own layer, then shifted right
+        if self.screen == "scores":
+            self.draw_scores(surf)
+            main.blit(surf, (self.DX, 0))
+            return self.draw_side(main)
 
         panel = pygame.Surface((840, 424), pygame.SRCALPHA)
         pygame.draw.rect(panel, (10, 14, 34, 205), panel.get_rect(), border_radius=18)
@@ -4236,6 +4763,13 @@ class Menu:
         pygame.draw.rect(surf, WHITE, rect, 3, border_radius=14)
         draw_text(surf, "PLAY BALL!", rect.centerx, rect.centery + 11, 30, (60, 35, 0), outline=False)
 
+        # weather (click to cycle: Random, Sunny, Night, Rain, Windy)
+        hover = self.weather_rect.collidepoint(self.mouse)
+        draw_text(surf, "WEATHER", self.weather_rect.centerx, self.weather_rect.y - 6, 14, GOLD)
+        pygame.draw.rect(surf, (60, 70, 110) if hover else (34, 42, 80), self.weather_rect, border_radius=8)
+        pygame.draw.rect(surf, WHITE if self.weather_choice != "Random" else (110, 120, 160), self.weather_rect, 2, border_radius=8)
+        draw_text(surf, WEATHER_NAMES[self.weather_choice], self.weather_rect.centerx, self.weather_rect.centery + 7, 17)
+
         # team preview + game length
         self.draw_logo_tools(surf)
         draw_text(surf, "INNINGS", 930, 596, 16, GOLD)
@@ -4245,8 +4779,144 @@ class Menu:
             pygame.draw.rect(surf, WHITE if selected else (110, 120, 160), rect, 2, border_radius=8)
             draw_text(surf, str(n), rect.centerx, rect.centery + 8, 20)
 
-        draw_text(surf, "Type to name your team  |  LEFT/RIGHT: color  |  UP/DOWN: difficulty  |  TAB: innings  |  ENTER: play  |  F11: fullscreen",
-                  640, 714, 12, (190, 195, 215))
+        draw_text(surf, "Type to name your team  |  LEFT/RIGHT: color  |  UP/DOWN: difficulty  |  TAB: innings  |  SHIFT+TAB: weather  |  ENTER: play  |  F11: fullscreen",
+                  640 - self.DX, 714, 12, (190, 195, 215))
+        main.blit(surf, (self.DX, 0))
+        self.draw_side(main)
+
+    def draw_side(self, surf):
+        """The option buttons on the left: EXHIBITION, HR DERBY, HIGH-SCORE, QUIT."""
+        current = {"home": 0, "scores": 2}[self.screen]
+        for i, (rect, label) in enumerate(zip(self.side_rects, self.SIDE_LABELS)):
+            selected, hover = i == current, rect.collidepoint(self.raw_mouse)
+            body = TEAL if selected else (60, 70, 110) if hover else (24, 30, 64)
+            if i == 3 and hover:
+                body = (150, 50, 50)
+            r = rect.inflate(10, 4) if hover and not selected else rect
+            pygame.draw.rect(surf, (10, 14, 34), r.move(0, 4), border_radius=14)
+            pygame.draw.rect(surf, body, r, border_radius=14)
+            pygame.draw.rect(surf, WHITE if selected else (110, 120, 160), r, 3 if selected else 2, border_radius=14)
+            draw_text(surf, label, r.centerx, r.centery + 8, 26)
+        if self.toast_t > 0:
+            draw_text(surf, self.toast, 165, self.side_rects[1].bottom + 22, 14, GOLD)
+
+    def draw_scores(self, surf):
+        """The high-score board (drawn in the panel's space)."""
+        panel = pygame.Surface((840, 424), pygame.SRCALPHA)
+        pygame.draw.rect(panel, (10, 14, 34, 215), panel.get_rect(), border_radius=18)
+        pygame.draw.rect(panel, (255, 255, 255, 60), panel.get_rect(), 2, border_radius=18)
+        surf.blit(panel, (220, 272))
+        board = load_scores()["scores"][self.score_diff]
+        draw_text(surf, "HIGH SCORES", 440, 316, 30, GOLD)
+        draw_text(surf, "DIFFICULTY", 770, 320, 13, (200, 205, 225), outline=False, align="right")
+        for n, (key, title, unit, _) in enumerate(RECORDS):
+            x, y = 240 + (n % 2) * 410, 336 + (n // 2) * 62
+            pygame.draw.rect(surf, (22, 28, 60), (x, y, 392, 54), border_radius=10)
+            pygame.draw.rect(surf, (110, 120, 160), (x, y, 392, 54), 2, border_radius=10)
+            draw_text(surf, title, x + 12, y + 17, 12, (200, 205, 225), outline=False, align="left")
+            rec = board["records"].get(key)
+            if rec:
+                shown = unit[:-1] if rec["value"] == 1 and unit.endswith("s") else unit
+                draw_text(surf, f"{rec['value']} {shown}", x + 12, y + 44, 22, GOLD, align="left")
+                draw_text(surf, rec["detail"], x + 380, y + 44, 11, (190, 195, 215), outline=False, align="right")
+            else:
+                draw_text(surf, "--", x + 12, y + 44, 22, (120, 128, 150), align="left")
+        t = board["totals"]
+        line = (f"GAMES {t.get('games', 0)}    WINS {t.get('wins', 0)}    LOSSES {t.get('losses', 0)}    TIES {t.get('ties', 0)}"
+                f"    RUNS {t.get('runs', 0)}    HITS {t.get('hits', 0)}    HOME RUNS {t.get('hr', 0)}")
+        draw_text(surf, line, 640, 624, 14, WHITE)
+        hover = self.clear_scores_rect.collidepoint(self.mouse)
+        pygame.draw.rect(surf, (150, 50, 50) if self.clear_armed > 0 else (60, 70, 110) if hover else (34, 42, 80), self.clear_scores_rect, border_radius=8)
+        pygame.draw.rect(surf, (110, 120, 160), self.clear_scores_rect, 2, border_radius=8)
+        draw_text(surf, "CLICK AGAIN TO CLEAR" if self.clear_armed > 0 else f"CLEAR {self.score_diff.upper()} RECORDS", self.clear_scores_rect.centerx,
+                  self.clear_scores_rect.centery + 5, 11)
+        box = self.score_box
+        pygame.draw.rect(surf, TEAL, box, border_radius=10)
+        pygame.draw.rect(surf, WHITE, box, 2, border_radius=10)
+        draw_text(surf, self.score_diff.upper(), box.centerx - 10, box.centery + 8, 20)
+        arrow = [(box.right - 30, box.centery - 5), (box.right - 14, box.centery - 5), (box.right - 22, box.centery + 6)]
+        pygame.draw.polygon(surf, WHITE, [(x, y) if not self.score_open else (x, 2 * box.centery - y) for x, y in arrow])
+        if self.score_open:                                  # the list, drawn last so it sits on top of the cards
+            for name, rect in self.score_items.items():
+                selected, hover = name == self.score_diff, rect.collidepoint(self.mouse)
+                pygame.draw.rect(surf, (20, 140, 150) if selected else (70, 82, 128) if hover else (26, 34, 70), rect, border_radius=8)
+                pygame.draw.rect(surf, WHITE if selected else (130, 140, 180), rect, 2, border_radius=8)
+                draw_text(surf, name.upper(), rect.centerx, rect.centery + 8, 20)
+        draw_text(surf, "Press ESC or click EXHIBITION to go back", 640 - self.DX, 714, 12, (190, 195, 215))
+
+
+# =============================================================================
+# HIGH SCORES  -  records kept between games (saved next to the game file)
+# =============================================================================
+
+SCORES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "flash_baseball_scores.json")
+# (key, title, unit, better) - "high" = bigger is better, "low" = smaller is better
+RECORDS = [("most_runs", "MOST RUNS IN A GAME", "runs", "high"),
+           ("biggest_diff", "BIGGEST WIN MARGIN", "runs", "high"),
+           ("longest_hr", "LONGEST HOME RUN", "ft", "high"),
+           ("most_hr", "MOST HOME RUNS IN A GAME", "HR", "high"),
+           ("most_hits", "MOST HITS IN A GAME", "hits", "high"),
+           ("most_perfect", "MOST PERFECT SWINGS IN A GAME", "swings", "high"),
+           ("best_streak", "LONGEST HOT STREAK", "swings", "high"),
+           ("fewest_allowed", "FEWEST RUNS ALLOWED IN A WIN", "runs", "low")]
+
+
+def load_scores():
+    """{"scores": {"Easy": {"records": {...}, "totals": {...}}, "Medium": ..., "Hard": ...}} - every difficulty keeps its own board."""
+    data = {}
+    try:
+        with open(SCORES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        pass
+    if not isinstance(data, dict):
+        data = {}
+    scores = data.get("scores") if isinstance(data.get("scores"), dict) else {}
+    if "records" in data and not scores:                     # an older file (one board for everything): sort its records by difficulty
+        for key, rec in data["records"].items():
+            parts = [p.strip() for p in str(rec.get("detail", "")).split("|")]
+            diff = parts[1] if len(parts) > 1 and parts[1] in DIFFICULTIES else "Medium"
+            scores.setdefault(diff, {"records": {}, "totals": {}})["records"][key] = rec
+        if data.get("totals"):
+            scores.setdefault("Medium", {"records": {}, "totals": {}})["totals"] = data["totals"]
+    for diff in DIFFICULTIES:
+        board = scores.setdefault(diff, {})
+        board.setdefault("records", {})
+        board.setdefault("totals", {})
+    return {"scores": scores}
+
+
+def save_scores(data):
+    try:
+        with open(SCORES_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
+
+
+def record_game(game):
+    """Called once when a game ends: update the records + lifetime totals for the difficulty it was played on."""
+    data = load_scores()
+    board = data["scores"][game.difficulty]
+    st, runs, cpu = game.stats, game.runs, game.cpu_runs
+    detail = f"{game.team_name[:12]} {runs}-{cpu}  |  {game.difficulty}  |  {game.innings} inn"
+    values = {"most_runs": runs, "longest_hr": st["long_hr"], "most_hr": st["hr"], "most_hits": st["hits"],
+              "most_perfect": st["perfect"], "best_streak": st["best_streak"]}
+    if runs > cpu:
+        values["biggest_diff"] = runs - cpu
+        values["fewest_allowed"] = cpu
+    for key, _, _, better in RECORDS:
+        if key not in values or (key == "longest_hr" and not values[key]):
+            continue
+        old = board["records"].get(key)
+        v = values[key]
+        if old is None or (v > old["value"] if better == "high" else v < old["value"]):
+            board["records"][key] = {"value": v, "detail": detail}
+    t = board["totals"]
+    for key, add in (("games", 1), ("wins", runs > cpu), ("losses", runs < cpu), ("ties", runs == cpu),
+                     ("runs", runs), ("hr", st["hr"]), ("hits", st["hits"])):
+        t[key] = t.get(key, 0) + int(add)
+    save_scores(data)
 
 
 # =============================================================================
@@ -4289,7 +4959,7 @@ def main():
             if mode == "menu":
                 if menu.handle_event(event, to_canvas):
                     menu.save_settings()
-                    game.configure(menu.team_name, menu.team_color, menu.difficulty, menu.innings, menu.logo_for_game(), menu.bat_choice)
+                    game.configure(menu.team_name, menu.team_color, menu.difficulty, menu.innings, menu.logo_for_game(), menu.bat_choice, menu.weather_choice)
                     mode = "game"
             elif event.type == pygame.MOUSEMOTION:
                 game.mouse = to_canvas(event.pos)

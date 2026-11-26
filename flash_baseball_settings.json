@@ -1,7 +1,8 @@
 {
-  "team_name": "TENNESSEE ",
+  "team_name": "TENNESSEE",
   "team_color": "Orange",
-  "difficulty": "Medium",
-  "innings": 3,
-  "bat_choice": 0
+  "difficulty": "Easy",
+  "innings": 1,
+  "bat_choice": 0,
+  "weather": "Night"
 }

@@ -1,0 +1,45 @@
+{
+  "records": {
+    "most_runs": {
+      "value": 16,
+      "detail": "TENNESSEE 16-7  |  Hard  |  1 inn"
+    },
+    "biggest_diff": {
+      "value": 9,
+      "detail": "TENNESSEE 16-7  |  Hard  |  1 inn"
+    },
+    "longest_hr": {
+      "value": 548,
+      "detail": "TENNESSEE 16-7  |  Hard  |  1 inn"
+    },
+    "most_hr": {
+      "value": 8,
+      "detail": "TENNESSEE 16-7  |  Hard  |  1 inn"
+    },
+    "most_hits": {
+      "value": 16,
+      "detail": "TENNESSEE 16-7  |  Hard  |  1 inn"
+    },
+    "most_perfect": {
+      "value": 15,
+      "detail": "TENNESSEE 16-7  |  Hard  |  1 inn"
+    },
+    "best_streak": {
+      "value": 8,
+      "detail": "TENNESSEE 16-7  |  Hard  |  1 inn"
+    },
+    "fewest_allowed": {
+      "value": 7,
+      "detail": "TENNESSEE 16-7  |  Hard  |  1 inn"
+    }
+  },
+  "totals": {
+    "games": 1,
+    "wins": 1,
+    "losses": 0,
+    "ties": 0,
+    "runs": 16,
+    "hr": 8,
+    "hits": 16
+  }
+}
