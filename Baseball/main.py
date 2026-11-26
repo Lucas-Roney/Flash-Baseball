@@ -71,6 +71,7 @@ FILE LAYOUT
 
 All times are in SECONDS. "bases" as a position means: 0=home, 1=first, 2=second, 3=third, 4=home again.
 """
+import asyncio
 import json
 import math
 import os
@@ -4918,26 +4919,96 @@ def record_game(game):
         t[key] = t.get(key, 0) + int(add)
     save_scores(data)
 
+# =============================================================================
+# TEAM-NAME FILTER  -  blocks cuss words and names like ADMIN (paste-in add-on)
+# =============================================================================
+import re
+
+RESERVED_NAMES = {"ADMIN", "ADMINISTRATOR", "ADMINS", "MOD", "MODS", "MODERATOR", "ROOT", "SYSTEM", "SYSADMIN",
+                  "OWNER", "DEV", "DEVS", "DEVELOPER", "STAFF", "OFFICIAL", "SUPPORT", "CPU", "NULL", "NONE",
+                  "UNDEFINED", "ITCH", "ITCHIO", "SERVER", "CONSOLE"}
+# blocked anywhere in the name, even squashed together ("XFUCKX", "F.U.C.K", "FUUUCK")
+BLOCKED_PARTS = ("FUCK", "SHIT", "BITCH", "CUNT", "PUSSY", "WHORE", "SLUT", "FAGG", "NIGG", "RETARD", "PENIS",
+                 "VAGINA", "PORN", "NAZI", "HITLER", "TWAT", "WANK", "BASTARD", "ASSHOLE", "JIZZ", "DILDO", "BOOB")
+# blocked only as a separate word, so BASS, GRAPE, GAMECOCKS, HELLCATS are still fine
+BLOCKED_WORDS = {"ASS", "ASSES", "CUM", "SEX", "SEXY", "COCK", "COCKS", "DICK", "DICKS", "RAPE", "TIT", "TITS",
+                 "HO", "HOE", "HOES", "DAMN", "HELL", "KKK", "FAG", "WTF", "STFU", "GTFO", "MILF"}
+LEET = str.maketrans("0134578", "OIEASTB")          # 5H1T -> SHIT, 4DM1N -> ADMIN
+
+
+def name_problem(name):
+    """'' if the team name is fine, otherwise a short message saying why it isn't."""
+    text = str(name).upper().translate(LEET)
+    words = re.findall(r"[A-Z]+", text)
+    squashed = "".join(words)
+    deduped = re.sub(r"(.)\1+", r"\1", squashed)    # FUUUCK -> FUCK
+    if squashed in RESERVED_NAMES or deduped in RESERVED_NAMES:
+        return "That name is reserved - pick another!"
+    if any(p in squashed or p in deduped for p in BLOCKED_PARTS) or any(w in BLOCKED_WORDS for w in words):
+        return "Keep it clean - pick another name!"
+    return ""
+
+
+_menu_init, _menu_event, _menu_update, _menu_draw = Menu.__init__, Menu.handle_event, Menu.update, Menu.draw
+
+
+def _filtered_init(self):
+    _menu_init(self)
+    self.name_error, self.name_error_t = "", 0.0
+    if name_problem(self.name):                     # a bad name saved from an earlier version doesn't come back
+        self.name = DEFAULT_TEAM_NAME
+
+
+def _filtered_event(self, event, to_canvas):
+    start = _menu_event(self, event, to_canvas)
+    if start:
+        problem = name_problem(self.team_name)
+        if problem:                                 # PLAY BALL / ENTER only works with an allowed name
+            self.name_error, self.name_error_t = problem, 2.5
+            return False
+    return start
+
+
+def _filtered_update(self, dt):
+    _menu_update(self, dt)
+    self.name_error_t = max(0.0, self.name_error_t - dt)
+
+
+def _filtered_draw(self, surf):
+    _menu_draw(self, surf)
+    if self.screen == "home" and self.name_error_t > 0:
+        draw_text(surf, self.name_error, 540 + self.DX, 392, 12, RED)    # red message just under the name box
+
+
+Menu.__init__, Menu.handle_event, Menu.update, Menu.draw = _filtered_init, _filtered_event, _filtered_update, _filtered_draw
+
 
 # =============================================================================
 # 6. MAIN LOOP
 # =============================================================================
 
-def make_window(fullscreen):
-    if fullscreen:
-        return pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-    return pygame.display.set_mode((int(LOGICAL_W * WINDOW_SCALE), int(LOGICAL_H * WINDOW_SCALE)), pygame.RESIZABLE)
+def make_window(fullscreen=False):
+    # On the web the browser controls the page size, so just match the canvas.
+    return pygame.display.set_mode((LOGICAL_W, LOGICAL_H))
 
 
-def main():
+async def main():
     pygame.init()
     pygame.display.set_caption("Flash Baseball")
-    fullscreen = FULLSCREEN
-    window = make_window(fullscreen)
+    window = make_window()
     canvas = pygame.Surface((LOGICAL_W, LOGICAL_H))
     clock = pygame.time.Clock()
+
+    # Show something right away so the page isn't blank while everything is pre-drawn
+    window.fill((14, 17, 22))
+    draw_text(window, "LOADING...", LOGICAL_W // 2, LOGICAL_H // 2, 32, GOLD)
+    pygame.display.flip()
+    await asyncio.sleep(0)
+
     game = Game()
+    await asyncio.sleep(0)
     menu = Menu()
+    await asyncio.sleep(0)
     mode = "menu"                                            # "menu" (start screen) or "game"
 
     def to_canvas(pos):
@@ -4949,17 +5020,15 @@ def main():
     while True:
         dt = min(0.05, clock.tick(FPS) / 1000)
         for event in pygame.event.get():
-            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
-                fullscreen = not fullscreen
-                window = make_window(fullscreen)
-                continue
+            if event.type == pygame.QUIT:
+                return                                       # (a browser tab can't really quit)
+            if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_F11):
+                continue                                     # no quitting or fullscreen toggling on the web
             if mode == "menu":
                 if menu.handle_event(event, to_canvas):
                     menu.save_settings()
-                    game.configure(menu.team_name, menu.team_color, menu.difficulty, menu.innings, menu.logo_for_game(), menu.bat_choice, menu.weather_choice)
+                    game.configure(menu.team_name, menu.team_color, menu.difficulty, menu.innings,
+                                   menu.logo_for_game(), menu.bat_choice, menu.weather_choice)
                     mode = "game"
             elif event.type == pygame.MOUSEMOTION:
                 game.mouse = to_canvas(event.pos)
@@ -4987,12 +5056,16 @@ def main():
             if game.quit_to_menu:
                 mode = "menu"
         w, h = window.get_size()
-        scale = min(w / LOGICAL_W, h / LOGICAL_H)
-        size = (int(LOGICAL_W * scale), int(LOGICAL_H * scale))
-        window.fill(BLACK)
-        window.blit(pygame.transform.smoothscale(canvas, size), ((w - size[0]) // 2, (h - size[1]) // 2))
+        if (w, h) == (LOGICAL_W, LOGICAL_H):
+            window.blit(canvas, (0, 0))                      # same size: no scaling needed (much faster in the browser)
+        else:
+            scale = min(w / LOGICAL_W, h / LOGICAL_H)
+            size = (int(LOGICAL_W * scale), int(LOGICAL_H * scale))
+            window.fill(BLACK)
+            window.blit(pygame.transform.scale(canvas, size), ((w - size[0]) // 2, (h - size[1]) // 2))
         pygame.display.flip()
+        await asyncio.sleep(0)                               # hand control back to the browser every frame
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
