@@ -196,8 +196,8 @@ TAG_SPEED_MULT = 2.4             # a tagging runner sprints (RUNNER_SPEED is slo
 TAG_RISK = 0.30                  # runners go on a fly ball if they think they beat the throw by this much (or less)
 FORCE_RUN_MULT = 1.35            # runners forced to run on a ground ball (double play chances) get a quick start
 FIELD_ERROR_CHANCE = 0.06        # a ground ball is bobbled (once per play)
-THROW_ERROR_CHANCE = 0.04        # a throw to a base is wild (once per play)
-ROB_CHANCE = 0.01                # a SHORT homer (under ROB_MAX_FT) is robbed at the wall
+THROW_ERROR_CHANCE = 0.05        # a throw to a base is wild (once per play)
+ROB_CHANCE = 0.05                # a SHORT homer (under ROB_MAX_FT) is robbed at the wall
 ROB_MAX_FT = 400
 ROB_FEET_Y, ROB_JUMP, ROB_END_Y = 146, 22, 92     # batting view: where the robber stands, how high he jumps, where the ball ends up
 FLIP_MIN_FT = 420                # a homer this long gets a bat flip...
@@ -244,9 +244,9 @@ METER_EXTRA_TIME = 0.25
 # For each contact quality: (cumulative chance, result)
 HIT_TABLES = {
     "perfect_perfect": [(1.00, "HR")],
-    "perfect":         [(0.28, "HR"), (0.50, "2B"), (0.58, "3B"), (0.82, "1B"), (1.00, "FLY_OUT")],
-    "good":            [(0.30, "1B"), (0.38, "2B"), (0.65, "GROUND_OUT"), (1.00, "FLY_OUT")],
-    "weak":            [(0.20, "1B"), (0.58, "GROUND_OUT"), (1.00, "FLY_OUT")],
+    "perfect":         [(0.3, "HR"), (0.5, "2B"), (0.55, "3B"), (0.85, "1B"), (0.92, "GROUND_OUT"), (1.00, "FLY_OUT")],
+    "good":            [(0.28, "1B"), (0.36, "2B"), (0.78, "GROUND_OUT"), (1.00, "FLY_OUT")],
+    "weak":            [(0.18, "1B"), (0.76, "GROUND_OUT"), (1.00, "FLY_OUT")],
 }
 # earned:   bases that runners ALREADY on base advance by themselves on this hit
 #           (the batter never runs automatically - you click Run)
@@ -279,9 +279,9 @@ CUTOFF_MIN_THROW = 330           # outfield throws longer than this go through a
 BACKUP_DISTANCE = 55             # a backup fielder stands this far behind where the ball lands
 
 # --- Catch / landing effects (so a fly out looks different from a hit that falls in) ---
-HIT_ROLL_SPEED = 190             # how fast a ball that falls in keeps rolling after it lands (pixels/second)
-GROUNDER_ROLL_SPEED = 90         # same, for ground balls
-ROLL_DRAG = 1.8                  # bigger = the ball stops rolling sooner
+HIT_ROLL_SPEED = 215             # how fast a ball that falls in keeps rolling after it lands (pixels/second)
+GROUNDER_ROLL_SPEED = 105         # same, for ground balls
+ROLL_DRAG = 1.6                  # bigger = the ball stops rolling sooner
 CATCH_FX_TIME = 1.2              # seconds the white "CAUGHT!" effect lasts
 
 # --- Baserunning -------------------------------------------------------------
@@ -316,8 +316,8 @@ SLUGGER_HITSTOP = 0.12           # the picture freezes this long on the connecti
 # --- Rare animations ---------------------------------------------------------
 # Each chance is rolled when that kind of play happens (0 = never, 1 = every time).
 DIVE_CHANCE = 0.10               # on a ground ball, the fielder dives for it
-LEAP_CHANCE = 0.10               # on a fly out, the fielder leaps for the catch
-BROKEN_BAT_CHANCE = 0.05         # on weak contact, the bat snaps
+LEAP_CHANCE = 0.15               # on a fly out, the fielder leaps for the catch
+BROKEN_BAT_CHANCE = 0.10         # on weak contact, the bat snaps
 FAN_CATCH_CHANCE = 0.10          # on a home run into the seats (not over the scoreboard), a fan catches it
 BOARD_X_MIN, BOARD_X_MAX = 292, 478   # a home run that ends up between these x positions hits the scoreboard
 BOARD_HIT_CHANCE = 0.10          # a home run headed over the scoreboard only actually hits it this often
@@ -495,6 +495,7 @@ class FieldPlay:
     error: bool = False        # a fielder booted the ball or threw it away
     error_done: bool = False   # (only one bobble per play)
     throw_error_done: bool = False
+    fumble: dict = None        # {fielder index: seconds left} - he has lost the ball / missed the catch and can't grab it yet
     error_fx: dict = None      # the "ERROR!" label: t (seconds), x, y
     close: dict = None         # a close play at a bag: base, t, result ("safe" / "out" / None until called), tres
     close_done: bool = False   # (one close play per at-bat)
@@ -624,6 +625,12 @@ TERRAIN = {
 def landing_spot(kind, sideways):
     """Where a batted ball lands on the field. Early swings pull to left, late swings go to right."""
     t = (sideways + 300) / 600
+    if kind not in ("GROUND_OUT", "HR") and random.random() < 0.65:      # most hits find a gap (left-center / right-center)
+        gap = 0.27 if t < 0.5 else 0.73
+        t += (gap - t) * 0.6
+    elif kind == "GROUND_OUT" and random.random() < 0.3:                  # some grounders go through the holes
+        gap = 0.3 if t < 0.5 else 0.7
+        t += (gap - t) * 0.5
     ux, uy = unit(lerp(U_LEFT[0], U_RIGHT[0], t), lerp(U_LEFT[1], U_RIGHT[1], t))
     lo, hi = HIT_INFO[kind]["distance"]
     d = random.uniform(lo, hi)
@@ -1190,8 +1197,24 @@ def draw_base_indicator(surf, x, y, bases, armed):
             pygame.draw.rect(surf, GREEN, (bx - 8, by - 8, 16, 16), 2)
 
 
+BALL_GOLD = [False]               # the derby's MONEY BALL is gold (set by the derby while it is being pitched)
+
+
 def draw_bat_ball(surf, x, y, radius):
     pygame.draw.ellipse(surf, (50, 100, 40), (x - radius, max(y, 200) + radius + 2 - radius * 0.4, radius * 2, radius * 0.8))
+    if BALL_GOLD[0]:
+        glow = pygame.Surface((int(radius * 8), int(radius * 8)), pygame.SRCALPHA)
+        c = int(radius * 4)
+        pygame.draw.circle(glow, (255, 210, 70, 60), (c, c), int(radius * 3.6))
+        pygame.draw.circle(glow, (255, 230, 120, 90), (c, c), int(radius * 2.2))
+        surf.blit(glow, (x - c, y - c))
+        for k in range(4):                                        # little sparkles
+            a = k * 1.571 + pygame.time.get_ticks() / 260
+            pygame.draw.line(surf, (255, 245, 170), (x + math.cos(a) * radius * 1.4, y + math.sin(a) * radius * 1.4),
+                             (x + math.cos(a) * radius * 2.4, y + math.sin(a) * radius * 2.4), 1)
+        pygame.draw.circle(surf, (255, 205, 60), (x, y), radius)
+        pygame.draw.circle(surf, (150, 95, 0), (x, y), radius, 1)
+        return
     pygame.draw.circle(surf, WHITE, (x, y), radius)
     pygame.draw.circle(surf, (204, 51, 51), (x, y), radius, 1)
 
@@ -2032,21 +2055,24 @@ def draw_broken_bat(surf, x, y, t, direction):
 
 
 def draw_fan(surf, gx, gy, p, clock, has_ball=False, k=FAN_SCALE):
-    """A (small) fan in the stands popping up to catch a home run. (gx, gy) is where his glove ends up.
-       p = 0..1 how far he has risen; clock = running time (he waves once he has the ball); k = size."""
-    rise = (1 - p) * 34 * k
-    feet = gy + 52 * k + rise
-    thick = max(1, int(4 * k))
-    pygame.draw.rect(surf, (52, 56, 66), (gx - 20 * k, feet - 8 * k, 40 * k, 14 * k), border_radius=2)   # seat back
-    pygame.draw.ellipse(surf, (200, 60, 60), (gx - 8 * k, feet - 40 * k, 16 * k, 40 * k))                # body
-    pygame.draw.circle(surf, (224, 190, 150), (gx, feet - 46 * k), 7 * k)                                # head
-    pygame.draw.circle(surf, (40, 60, 120), (gx, feet - 48 * k), 7.5 * k, draw_top_left=True, draw_top_right=True)   # cap
-    wave = math.sin(clock * 12) * 6 * k if p >= 1 else 0
-    pygame.draw.line(surf, (200, 60, 60), (gx - 6 * k, feet - 34 * k), (gx - 16 * k + wave * 0.3, feet - 52 * k + wave), thick)  # free arm
-    pygame.draw.line(surf, (200, 60, 60), (gx + 4 * k, feet - 34 * k), (gx, gy + rise), thick)           # glove arm
-    pygame.draw.circle(surf, (120, 75, 40), (gx, gy + rise), max(2, 6 * k))
+    """A fan in the stands - one of the little square fans of the crowd, but this one leaps up with a tiny glove to catch a home run.
+       (gx, gy) is where his glove ends up. p = 0..1 how far he has leapt; clock = running time (he bobs happily once he has the ball)."""
+    side = 4 + (1 if p > 0.6 else 0)                                                # crowd-sized square; a touch bigger as he jumps up
+    rise = (1 - p) * 7                                                # he jumps up out of his seat as p goes 0 -> 1
+    bob = math.sin(clock * 14) * 1.5 if has_ball else 0.0
+    gloves_y = gy + rise
+    body_x, body_y = gx - side / 2 + 2, gloves_y + side * 0.9 + bob
+    jersey = (205, 60, 60)
+    pygame.draw.rect(surf, (52, 56, 66), (body_x - 1, body_y + side, side + 2, 1))                # his seat
+    pygame.draw.rect(surf, jersey, (body_x, body_y, side, side))
+    pygame.draw.rect(surf, (40, 60, 120), (body_x, body_y, side, max(2, side // 3)))                  # his cap
+    pygame.draw.line(surf, jersey, (body_x + side - 1, body_y + 1), (gx, gloves_y + 2), 1)   # the arm reaching up
+    pygame.draw.line(surf, jersey, (body_x, body_y + 2), (body_x - 3, body_y - 2 - (3 if has_ball else 0)), 1)    # the other arm
+    g = 3
+    pygame.draw.rect(surf, (120, 75, 40), (gx - g / 2, gloves_y - g / 2, g, g), border_radius=1)     # the glove
+    pygame.draw.rect(surf, (80, 46, 22), (gx - g / 2, gloves_y - g / 2, g, g), 1, border_radius=1)
     if has_ball:
-        pygame.draw.circle(surf, WHITE, (gx, gy + rise - 1), max(1, 3 * k))
+        pygame.draw.rect(surf, WHITE, (gx - 1, gloves_y - 2, 3, 3))                                   # ...with the ball in it
 
 
 # --- start-screen drawing ------------------------------------------------------
@@ -2089,7 +2115,7 @@ def build_title(text, max_width=1100, size=130):
         a = k * math.pi / 8
         out.blit(mask, (int(round(5 * math.cos(a))), int(round(5 * math.sin(a)))))
     out.blit(gradient, (0, 0))
-    return dict(image=out, mask=mask)
+    return dict(image=out, mask=mask, f_w=widths[0])
 
 
 def draw_title(surf, title, cx, cy, t):
@@ -2398,7 +2424,7 @@ class Game:
 
     def press_run_key(self):
         """R: send a standing runner, or tell a moving runner to run THROUGH the next bag."""
-        if self.state != "FIELD_PLAY" or self.fp.pending:
+        if self.state != "FIELD_PLAY" or self.fp.pending or self.fp.close:      # (no orders once a close play has started)
             return
         runner = self.fp.runner
         if not runner.moving:
@@ -3015,14 +3041,17 @@ class Game:
             ball.z = abs(math.sin(ball.bt * 9)) * 14 * math.exp(-3 * ball.bt) if hit.arc > 0 else 0
             self.pick_chaser()                               # the nearest fielder to the ball goes for it
             chaser = fp.fielders[fp.chaser]
-            if math.hypot(chaser.x - ball.x, chaser.y - ball.y) < 14:
-                if (hit.arc == 0 and not fp.error_done and chaser.name in ("1B", "2B", "SS", "3B", "P")
-                        and random.random() < FIELD_ERROR_CHANCE):             # ERROR: he boots it
-                    fp.error_done = fp.error = True
+            if math.hypot(chaser.x - ball.x, chaser.y - ball.y) < 14 and fp.fumble and fp.chaser in fp.fumble:
+                pass                                         # he is still fumbling: he can't get a hand on it yet
+            elif math.hypot(chaser.x - ball.x, chaser.y - ball.y) < 14:
+                if (not fp.error_done and not fp.fumble and random.random() < (FIELD_ERROR_CHANCE if hit.arc == 0 else FIELD_ERROR_CHANCE * 0.6)):
+                    fp.error_done = fp.error = True               # ERROR: the ball pops out of his glove and skips away
                     self.stats["errors"] += 1
                     fp.error_fx = dict(t=0.0, x=chaser.x, y=chaser.y)
-                    a = random.uniform(0, math.tau)
-                    ball.vx, ball.vy, ball.bt = math.cos(a) * 95, math.sin(a) * 95, 0.0
+                    fp.fumble = {fp.chaser: 0.9}
+                    ux, uy = unit(ball.x - HOME[0], ball.y - HOME[1])
+                    a = math.atan2(uy, ux) + random.uniform(-1.4, 1.4)
+                    ball.vx, ball.vy, ball.bt = math.cos(a) * 150, math.sin(a) * 150, 0.0
                 else:
                     ball.mode, ball.holder, ball.hold_time, ball.quick = "held", fp.chaser, 0.0, False
         elif ball.mode == "thrown":
@@ -3036,8 +3065,9 @@ class Game:
                 self.stats["errors"] += 1
                 fp.error_fx = dict(t=0.0, x=ball.sx, y=ball.sy)
                 ux, uy = unit(ball.tx - ball.sx, ball.ty - ball.sy)
-                ball.mode, ball.z, ball.bt = "loose", 0.0, 0.0
-                ball.vx, ball.vy = ux * 120 + random.uniform(-60, 60), uy * 120 + random.uniform(-60, 60)
+                ball.mode, ball.z, ball.bt = "loose", 0.0, 0.0          # sails past him / skips off his glove
+                ball.vx, ball.vy = ux * 260 + random.uniform(-90, 90), uy * 260 + random.uniform(-90, 90)
+                fp.fumble = {ball.receiver: 0.6}
                 fp.chaser = ball.receiver
             elif u >= 1:
                 ball.mode, ball.holder, ball.hold_time, ball.z, ball.quick = "held", ball.receiver, 0.0, 0.0, True
@@ -3063,7 +3093,23 @@ class Game:
                     tx, ty = fp.hit.land_x, fp.hit.land_y
             else:
                 tx, ty = f.post
+            if fp.fumble and i in fp.fumble and fp.fumble[i] > 0.45:
+                continue                                       # he is stumbling after the boot / the wild throw
+            if (not chasing and f.name in ("LF", "CF", "RF") and fp.ball.mode in ("flying", "loose")
+                    and (fp.ball.mode == "loose" or fp.hit.arc == 0)):
+                bx, by = (fp.ball.x, fp.ball.y) if fp.ball.mode == "loose" else (fp.hit.land_x, fp.hit.land_y)
+                of = [g for j, g in enumerate(fp.fielders) if j != fp.chaser and g.name in ("LF", "CF", "RF")]
+                if min(of, key=lambda g: math.hypot(g.x - bx, g.y - by)) is f and math.hypot(f.x - bx, f.y - by) < 420:
+                    ux, uy = unit(bx - HOME[0], by - HOME[1])      # the closest outfielder charges in and backs the play up
+                    tx, ty = clamp(bx + ux * BACKUP_DISTANCE * 0.6, 60, 1220), clamp(by + uy * BACKUP_DISTANCE * 0.6, 255, 700)
+                    chasing_backup = True
+                else:
+                    chasing_backup = False
+            else:
+                chasing_backup = False
             speed = FIELDER_SPEED * (fp.boost if chasing else 1.0 if f.post in BASES else 0.8)
+            if chasing_backup:
+                speed = FIELDER_SPEED * 1.2
             if fp.dive and fp.dive["idx"] == i:
                 if fp.dive["t"] < DIVE_TIME:
                     speed = FIELDER_SPEED * 2.2              # the dive carries him forward fast
@@ -3300,7 +3346,7 @@ class Game:
                 and r.recovery <= 0 and not self.pitcher_has_ball() and self.can_continue_from(round(r.pos)))
 
     def action_send(self):
-        if self.can_send():
+        if self.can_send() and not self.fp.close:
             r = self.fp.runner
             r.target, r.forward, r.moving = round(r.pos) + 1, True, True
             r.pos, r.wait, r.run_through = float(round(r.pos)), 0.0, False
@@ -3308,7 +3354,7 @@ class Game:
             r.turn_cooldown = TURN_COOLDOWN                  # can't be turned around instantly
 
     def action_slide(self):
-        if self.field_button() and self.field_button()[0] == "Slide":
+        if not self.fp.close and self.field_button() and self.field_button()[0] == "Slide":
             self.fp.runner.sliding = True
 
     def action_turn(self):
@@ -3316,7 +3362,7 @@ class Game:
         of him. Nobody can turn back while running to first."""
         fp = self.fp
         r = fp.runner
-        if fp.pending or not r.moving or r.sliding or r.turn_cooldown > 0 or r.wait > 0:
+        if fp.close or fp.pending or not r.moving or r.sliding or r.turn_cooldown > 0 or r.wait > 0:      # (a close play: no turning back)
             return
         if r.forward:
             if r.target <= max(r.earned, 1):                 # can't turn back toward home or during the guaranteed part
@@ -3349,8 +3395,8 @@ class Game:
 
     def field_button(self):
         """(label, x, y) of the on-screen button right now, or None."""
-        if self.state != "FIELD_PLAY" or self.fp.pending:
-            return None
+        if self.state != "FIELD_PLAY" or self.fp.pending or self.fp.close:
+            return None                                      # (the RUN / SLIDE buttons go away once a close play starts)
         r = self.fp.runner
         if r.moving:
             if r.forward and not r.sliding and r.wait <= 0 and r.target >= r.earned and r.target - r.pos <= SLIDE_RANGE:
@@ -3573,6 +3619,8 @@ class Game:
         self.settle = min(1.0, self.settle + dt / SETTLE_TIME)
         self.shake = max(0.0, self.shake - dt)
         self.fire_flash = max(0.0, self.fire_flash - dt)
+        if self.fp and self.fp.fumble:
+            self.fp.fumble = {i: t - dt for i, t in self.fp.fumble.items() if t - dt > 0}
         if self.fp and self.fp.error_fx:
             self.fp.error_fx["t"] += dt
         if self.board_time >= 0:                             # scoreboard rock-and-flicker clock
@@ -4088,7 +4136,8 @@ class Game:
         draw_bat_scoreboard(surf, self)
         draw_base_indicator(surf, 60, 88, self.bases, self.steal_armed)
         robbing = bool(self.hit and self.hit.robbed and (self.state == "BALL_IN_FLIGHT" or self.state == "MESSAGE" and self.message == "ROBBED!"))
-        draw_bat_fielders(surf, rob_fielder(clamp(self.hit.start_x + self.hit.sideways, 90, 680)) if robbing else None)
+        if not self.is_derby:                                        # (the derby has no fielders standing around)
+            draw_bat_fielders(surf, rob_fielder(clamp(self.hit.start_x + self.hit.sideways, 90, 680)) if robbing else None)
         if self.state == "WIND_UP":
             delivery = min(1, self.state_time / WIND_UP_TIME)
         elif self.state == "PITCH":
@@ -4130,7 +4179,7 @@ class Game:
         if self.weather in ("Night", "Rain"):
             self.draw_weather(surf)
         draw_batter_card(surf, self)
-        if self.fire_flash > 0 or self.on_fire():
+        if (self.fire_flash > 0 or self.on_fire()) and not self.is_derby:
             draw_text(surf, "ON FIRE!", 385, 100 if self.fire_flash > 0 else 112, 22 if self.fire_flash > 0 else 14, (255, 170, 40))
         if self.pitch and (self.state in ("PITCH", "BALL_IN_FLIGHT") or self.state == "MESSAGE" and self.state_time < 1.4):
             self.draw_meter(surf)
@@ -4615,6 +4664,11 @@ class Menu:
         """Returns True when the player chooses to start the game."""
         if event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN):
             self.raw_mouse = to_canvas(event.pos)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.screen == "home":
+            ir = self.title["image"].get_rect(center=(640, 150))
+            if pygame.Rect(ir.x + 30, ir.y, self.title["f_w"] + 12, ir.h).collidepoint(self.raw_mouse):
+                unlock_all()                                 # easter egg / dev tool: click the F in FLASH
+                return False
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for i, rect in enumerate(self.side_rects):
                 if rect.collidepoint(self.raw_mouse):
@@ -4622,6 +4676,17 @@ class Menu:
                     return False
         if event.type == pygame.MOUSEMOTION:
             self.mouse = (self.raw_mouse[0] - self.DX, self.raw_mouse[1])
+        if self.screen == "derby_pick":                      # choose one of three hitters for the derby
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                pos = (self.raw_mouse[0] - self.DX, self.raw_mouse[1])
+                for rect, hitter in zip(DERBY_CARD_RECTS, self.derby_choices):
+                    if rect.collidepoint(pos):
+                        self.derby_hitter, self.want_derby = hitter, True
+            elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                self.screen = "home"
+            elif event.type == pygame.KEYDOWN and event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
+                self.derby_hitter, self.want_derby = self.derby_choices[event.key - pygame.K_1], True
+            return False
         if self.screen == "scores":                          # the high-score board only has its own buttons
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pos = (self.raw_mouse[0] - self.DX, self.raw_mouse[1])
@@ -4716,6 +4781,10 @@ class Menu:
             self.draw_scores(surf)
             main.blit(surf, (self.DX, 0))
             return self.draw_side(main)
+        if self.screen == "derby_pick":
+            draw_derby_pick(self, surf)
+            main.blit(surf, (self.DX, 0))
+            return self.draw_side(main)
 
         panel = pygame.Surface((840, 424), pygame.SRCALPHA)
         pygame.draw.rect(panel, (10, 14, 34, 205), panel.get_rect(), border_radius=18)
@@ -4787,7 +4856,7 @@ class Menu:
 
     def draw_side(self, surf):
         """The option buttons on the left: EXHIBITION, HR DERBY, HIGH-SCORE, QUIT."""
-        current = {"home": 0, "scores": 2}[self.screen]
+        current = {"home": 0, "scores": 2, "derby_pick": 1}[self.screen]
         for i, (rect, label) in enumerate(zip(self.side_rects, self.SIDE_LABELS)):
             selected, hover = i == current, rect.collidepoint(self.raw_mouse)
             body = TEAL if selected else (60, 70, 110) if hover else (24, 30, 64)
@@ -4984,6 +5053,898 @@ Menu.__init__, Menu.handle_event, Menu.update, Menu.draw = _filtered_init, _filt
 
 
 # =============================================================================
+# SAVING PROGRESS  +  LOCKED ANIMATIONS  +  HOME RUN DERBY   (paste-in add-on)
+# =============================================================================
+import base64
+
+# --- 1. SAVING ------------------------------------------------------------------
+# In the browser (itch.io / pygbag) files do NOT survive closing the tab, but localStorage does. pygbag exposes it as
+# platform.window.localStorage. On your computer that doesn't exist, so the same functions fall back to plain files.
+STORAGE_PREFIX = "flash_baseball."
+_HERE = os.path.dirname(os.path.abspath(__file__))
+STORAGE_FILES = {"settings": SETTINGS_FILE, "scores": SCORES_FILE,
+                 "unlocks": os.path.join(_HERE, "flash_baseball_unlocks.json"),
+                 "derby": os.path.join(_HERE, "flash_baseball_derby.json"),
+                 "logo": os.path.join(_HERE, "flash_baseball_logo.b64")}
+
+
+def _browser_storage():
+    """The browser's localStorage, or None when not running in a browser."""
+    try:
+        import platform
+        return platform.window.localStorage
+    except Exception:
+        return None
+
+
+def storage_get(name):
+    """The saved text for `name`, or None."""
+    box = _browser_storage()
+    if box is not None:
+        try:
+            value = box.getItem(STORAGE_PREFIX + name)
+            return None if value is None else str(value)
+        except Exception:
+            return None
+    try:
+        with open(STORAGE_FILES[name], "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def storage_set(name, text):
+    box = _browser_storage()
+    if box is not None:
+        try:
+            box.setItem(STORAGE_PREFIX + name, text)
+        except Exception:
+            pass                                             # storage blocked / full: the game still works, it just won't remember
+        return
+    try:
+        with open(STORAGE_FILES[name], "w", encoding="utf-8") as f:
+            f.write(text)
+    except OSError:
+        pass
+
+
+def read_json(name, default):
+    text = storage_get(name)
+    if not text:
+        return default
+    try:
+        return json.loads(text)
+    except ValueError:
+        return default
+
+
+def write_json(name, data):
+    storage_set(name, json.dumps(data))
+
+
+def load_scores():
+    """{"scores": {"Easy": {"records": {...}, "totals": {...}}, ...}} - every difficulty keeps its own board."""
+    data = read_json("scores", {})
+    if not isinstance(data, dict):
+        data = {}
+    scores = data.get("scores") if isinstance(data.get("scores"), dict) else {}
+    if "records" in data and not scores:                     # an older file (one board for everything): sort its records by difficulty
+        for key, rec in data["records"].items():
+            parts = [p.strip() for p in str(rec.get("detail", "")).split("|")]
+            diff = parts[1] if len(parts) > 1 and parts[1] in DIFFICULTIES else "Medium"
+            scores.setdefault(diff, {"records": {}, "totals": {}})["records"][key] = rec
+        if data.get("totals"):
+            scores.setdefault("Medium", {"records": {}, "totals": {}})["totals"] = data["totals"]
+    for diff in DIFFICULTIES:
+        board = scores.setdefault(diff, {})
+        board.setdefault("records", {})
+        board.setdefault("totals", {})
+    return {"scores": scores}
+
+
+def save_scores(data):
+    write_json("scores", data)
+
+
+def save_logo(surface):
+    """Your drawn logo, stored as text (48x48 RGBA bytes -> base64, about 12 KB)."""
+    try:
+        to_bytes = getattr(pygame.image, "tobytes", None) or pygame.image.tostring
+        storage_set("logo", base64.b64encode(to_bytes(surface, "RGBA")).decode("ascii"))
+    except Exception:
+        pass
+
+
+def load_logo():
+    text = storage_get("logo")
+    if not text:
+        return None
+    try:
+        raw = base64.b64decode(text)
+        if len(raw) != LOGO_PX * LOGO_PX * 4:
+            return None
+        from_bytes = getattr(pygame.image, "frombytes", None) or pygame.image.fromstring
+        return from_bytes(raw, (LOGO_PX, LOGO_PX), "RGBA").convert_alpha()
+    except Exception:
+        return None
+
+
+def _menu_load_settings(self):
+    """Bring back the team name, color, difficulty and innings from last time (anything missing or invalid is ignored)."""
+    data = read_json("settings", None)
+    if not isinstance(data, dict):
+        return
+    name = data.get("team_name")
+    if isinstance(name, str) and name.strip():
+        self.name = name[:MAX_NAME_LENGTH]
+    labels = [label for label, _ in TEAM_COLORS]
+    if data.get("team_color") in labels:
+        self.color_index = labels.index(data["team_color"])
+    if data.get("difficulty") in DIFFICULTIES:
+        self.difficulty = data["difficulty"]
+    if data.get("innings") in INNING_OPTIONS:
+        self.innings = data["innings"]
+    if data.get("weather") in WEATHER_OPTIONS:
+        self.weather_choice = data["weather"]
+
+
+def _menu_save_settings(self):
+    write_json("settings", {"team_name": self.name, "team_color": TEAM_COLORS[self.color_index][0],
+                            "difficulty": self.difficulty, "innings": self.innings, "bat_choice": self.bat_choice,
+                            "weather": self.weather_choice})
+
+
+def _menu_logo_for_game(self):
+    """The finished logo for the game (and saves your drawing so it is here next time)."""
+    if self.logo_drawn:
+        save_logo(self.logo)
+        return compose_logo(self.logo, self.team_color)
+    storage_set("logo", "")                                  # you cleared it: forget the old one
+    return build_default_logo(self.team_name, self.team_color)
+
+
+_menu_init_before_saving = Menu.__init__
+
+
+def _menu_init_with_saved_logo(self):
+    _menu_init_before_saving(self)
+    logo = load_logo()
+    if logo is not None:
+        self.logo, self.logo_drawn = logo, True
+
+
+Menu.load_settings, Menu.save_settings, Menu.logo_for_game = _menu_load_settings, _menu_save_settings, _menu_logo_for_game
+Menu.__init__ = _menu_init_with_saved_logo
+
+
+# --- 2. LOCKED ANIMATIONS ----------------------------------------------------------
+UNLOCK_ALL_FOR_TESTING = False                               # True = nothing is locked (handy while you are testing)
+ANIM_NAMES = [a[0] for a in ANIMATIONS]
+UNLOCK_HINTS = {
+    "Slugger Cutscene": "Hit a PERFECT PERFECT home run",
+    "Diving Stop": "Hit a ground ball that gets a diving stop",
+    "Leaping Catch": "Hit a fly ball that a fielder leaps to catch",
+    "Broken Bat": "Make weak contact and snap your bat",
+    "Fan Catch": "Hit a home run that a fan catches",
+    "Scoreboard Hit": "Hit a home run off the scoreboard",
+    "Robbed at the Wall": "Have a short home run stolen at the wall",
+    "Bat Flip": "Hit a monster home run and flip the bat",
+    "On Fire": "Get " + str(ON_FIRE_STREAK) + " good swings in a row",
+    "Close Play: Safe": "Beat a close tag at a base",
+    "Close Play: Out": "Get tagged out on a close play",
+}
+UNLOCKED = set()
+UNLOCK_TOAST = {"name": "", "t": 0.0}
+
+
+def load_unlocks():
+    saved = read_json("unlocks", [])
+    UNLOCKED.clear()
+    if isinstance(saved, list):
+        UNLOCKED.update(n for n in saved if n in ANIM_NAMES)
+
+
+def is_unlocked(name):
+    return UNLOCK_ALL_FOR_TESTING or name in UNLOCKED
+
+
+def unlock_all():
+    for n in ANIM_NAMES:
+        UNLOCKED.add(n)
+    write_json("unlocks", sorted(UNLOCKED))
+    UNLOCK_TOAST["name"], UNLOCK_TOAST["t"] = "ALL ANIMATIONS", 3.6
+
+
+def unlock(name):
+    """Unlock an animation (only does anything the first time) and show the banner."""
+    if name in UNLOCKED or name not in ANIM_NAMES:
+        return
+    UNLOCKED.add(name)
+    write_json("unlocks", sorted(UNLOCKED))
+    UNLOCK_TOAST["name"], UNLOCK_TOAST["t"] = name, 3.6
+
+
+def draw_lock(surf, cx, cy, s, color=(150, 158, 185)):
+    """A little padlock."""
+    width = max(2, int(4 * s))
+    pygame.draw.arc(surf, color, (int(cx - 10 * s), int(cy - 26 * s), int(20 * s), int(26 * s)), 0, math.pi, width)
+    pygame.draw.rect(surf, color, (int(cx - 14 * s), int(cy - 8 * s), int(28 * s), int(22 * s)), border_radius=max(1, int(4 * s)))
+    pygame.draw.circle(surf, (24, 28, 52), (int(cx), int(cy + 1 * s)), max(2, int(3.5 * s)))
+    pygame.draw.rect(surf, (24, 28, 52), (int(cx - s), int(cy + 1 * s), max(2, int(2 * s)), int(7 * s)))
+
+
+def draw_unlock_toast(surf):
+    t = UNLOCK_TOAST["t"]
+    slide = min(1.0, (3.6 - t) / 0.35, t / 0.35)                # slides up, waits, slides away
+    y = 740 - 112 * clamp(slide, 0, 1)
+    pygame.draw.rect(surf, (20, 26, 58), (390, y, 500, 76), border_radius=14)
+    pygame.draw.rect(surf, GOLD, (390, y, 500, 76), 3, border_radius=14)
+    draw_lock(surf, 428, y + 40, 0.9, GOLD)
+    draw_text(surf, "ANIMATION UNLOCKED!", 460, y + 30, 18, GOLD, align="left")
+    draw_text(surf, UNLOCK_TOAST["name"], 460, y + 60, 22, WHITE, align="left")
+
+
+def _track_make_contact(original):
+    def make_contact(self, quality, raw_error):
+        original(self, quality, raw_error)
+        if self.is_derby:
+            return
+        if self.state == "HR_CUTSCENE":
+            unlock("Slugger Cutscene")
+        if self.hit and self.hit.broken_bat:
+            unlock("Broken Bat")
+    return make_contact
+
+
+def _track_update_rare(original):
+    def update_rare(self, dt, allow_trigger=True):
+        original(self, dt, allow_trigger)
+        if not self.is_derby and self.fp:
+            if self.fp.dive:
+                unlock("Diving Stop")
+            if self.fp.leap:
+                unlock("Leaping Catch")
+    return update_rare
+
+
+def _track_home_run(original):
+    def home_run(self):
+        if not self.is_derby and self.hit:
+            if self.hit.robbed:
+                unlock("Robbed at the Wall")
+            else:
+                if self.fan:
+                    unlock("Fan Catch")
+                if self.board_hit:
+                    unlock("Scoreboard Hit")
+                if self.hit.flip:
+                    unlock("Bat Flip")
+        original(self)
+    return home_run
+
+
+def _track_swing(original):
+    def swing(self):
+        original(self)
+        if not self.is_derby and self.streak >= ON_FIRE_STREAK:
+            unlock("On Fire")
+    return swing
+
+
+def _track_close_result(original):
+    def close_result(self, base, out):
+        original(self, base, out)
+        c = self.fp.close if self.fp else None
+        if c and c["result"] and not self.is_derby:
+            unlock("Close Play: Out" if c["result"] == "out" else "Close Play: Safe")
+    return close_result
+
+
+def _toast_update(original):
+    def update(self, dt):
+        original(self, dt)
+        if not self.paused:
+            UNLOCK_TOAST["t"] = max(0.0, UNLOCK_TOAST["t"] - dt)
+    return update
+
+
+def _toast_draw(original):
+    def draw(self, canvas):
+        original(self, canvas)
+        if UNLOCK_TOAST["t"] > 0 and not self.paused:
+            draw_unlock_toast(canvas)
+    return draw
+
+
+def _gallery_draw(self, surf):
+    """The Animations gallery, with a lock on every animation you haven't triggered in an exhibition game yet."""
+    surf.fill((12, 16, 36))
+    draw_text(surf, "ANIMATIONS", 640, 88, 46, GOLD)
+    got = sum(1 for a in ANIMATIONS if is_unlocked(a[0]))
+    draw_text(surf, f"UNLOCKED {got} / {len(ANIMATIONS)}   -   find them in an exhibition game!", 640, 118, 15, (200, 205, 225), outline=False)
+    first = self.gallery_page() * ANIM_PAGE
+    for i, (rect, (name, _, _)) in enumerate(zip(self.gallery_rects(), ANIMATIONS[first:]), start=first):
+        selected, locked = i == self.anim_index, not is_unlocked(name)
+        pygame.draw.rect(surf, (TEAL if selected else (34, 42, 80)) if not locked else ((70, 78, 110) if selected else (26, 30, 56)), rect, border_radius=10)
+        pygame.draw.rect(surf, WHITE if selected else (110, 120, 160), rect, 2, border_radius=10)
+        size = 20 if rect.height >= 56 else 17
+        draw_text(surf, f"{i + 1}. {'???' if locked else name}", rect.x + 18, rect.centery + size * 0.4, size,
+                  (160, 166, 190) if locked else WHITE, align="left")
+        if locked:
+            draw_lock(surf, rect.right - 34, rect.centery + 4, 0.8)
+    name, info, duration = ANIMATIONS[self.anim_index]
+    cx = self.PREVIEW_RECT.centerx
+    if is_unlocked(name):
+        t = min(self.anim_clock % (duration + 0.8), duration)             # plays, pauses a moment, loops
+        scene = self.preview_scene
+        (self.scene_slugger, self.scene_dive, self.scene_leap, self.scene_broken_bat,
+         self.scene_fan, self.scene_board, self.scene_robbed, self.scene_flip, self.scene_fire,
+         lambda sc, tt: self.scene_close(sc, tt, "safe"), lambda sc, tt: self.scene_close(sc, tt, "out"))[self.anim_index](scene, t)
+        surf.blit(pygame.transform.smoothscale(scene, self.PREVIEW_RECT.size), self.PREVIEW_RECT.topleft)
+        title, line = name, info
+    else:
+        pygame.draw.rect(surf, (16, 20, 44), self.PREVIEW_RECT)
+        draw_lock(surf, cx, self.PREVIEW_RECT.centery - 10, 3.6)
+        draw_text(surf, "LOCKED", cx, self.PREVIEW_RECT.centery + 90, 40, (170, 176, 200))
+        title, line = "???", "To unlock: " + UNLOCK_HINTS.get(name, "play an exhibition game")
+    pygame.draw.rect(surf, WHITE, self.PREVIEW_RECT.inflate(8, 8), 3)
+    draw_text(surf, title, cx, 590, 26, GOLD)
+    draw_text(surf, line, cx, 620, 16)
+    self.draw_pause_button(surf, self.BACK_RECT, "BACK", False)
+    self.draw_pause_button(surf, self.PREV_RECT, "<", False)
+    self.draw_pause_button(surf, self.NEXT_RECT, ">", False)
+    draw_text(surf, f"PAGE {self.gallery_page() + 1}/{self.gallery_pages()}", 365, 636, 20, WHITE)
+    draw_text(surf, "UP/DOWN: choose   LEFT/RIGHT: page   ENTER or click window: replay   BACKSPACE: back   P: resume", cx, 690, 13, (200, 205, 225))
+
+
+Game.is_derby = False
+Game.make_contact = _track_make_contact(Game.make_contact)
+Game.update_rare = _track_update_rare(Game.update_rare)
+Game.home_run = _track_home_run(Game.home_run)
+Game.swing = _track_swing(Game.swing)
+Game.close_result = _track_close_result(Game.close_result)
+Game.update = _toast_update(Game.update)
+Game.draw = _toast_draw(Game.draw)
+Game.draw_gallery = _gallery_draw
+
+
+# --- 3. HOME RUN DERBY ------------------------------------------------------------
+DERBY_OUTS = 10                                              # the derby ends after this many outs
+# chance a swing of each quality leaves the yard (a PERFECT PERFECT swing is always a homer). Power hitters / heavy bats add to it.
+DERBY_HR_CHANCE = {"perfect_perfect": 1.0, "perfect": 0.82, "good": 0.40, "weak": 0.07}
+DERBY_DISTANCE = {"perfect_perfect": (430, 560), "perfect": (380, 470), "good": (350, 430), "weak": (350, 385)}   # feet
+DERBY_TIME = 75.0                                            # seconds on the clock (like the MLB The Show derby: it is timed, not outs)
+DERBY_BONUS_TIME = 15.0                                      # two homers over DERBY_LONG_FT earn this much extra time
+DERBY_LONG_FT = 450
+DERBY_REPLAY_FT = 450                                        # a homer this long can get a drone replay...
+DERBY_REPLAY_CHANCE = 1 / 3                                  # ...about one time in three
+REPLAY_IMPACT, REPLAY_FLIGHT, REPLAY_HOLD = 1.7, 4.6, 0.9    # seconds: the bat hits the ball (slow motion), the drone follows it, the result holds
+DERBY_PITCH_SLOWDOWN = 1.12                                  # batting-practice pitches are a bit slower than game pitches
+DERBY_MESSAGE_TIME = 1.2                                     # results pop up and move on by themselves (no NEXT PITCH button)
+DERBY_BATTER = 3                                             # who bats: an index into LINEUP (3 = T. Okafor, the slugger)
+
+
+DERBY_FIRST = ["J.", "M.", "D.", "T.", "R.", "K.", "L.", "P.", "S.", "A.", "C.", "B.", "E.", "N.", "G.", "H."]
+DERBY_LAST = ["Alvarez", "Chen", "Brooks", "Okafor", "Santos", "Nakamura", "Murphy", "Dubois", "Kowalski", "Ramirez", "Johnson",
+              "Tanaka", "Fischer", "Oyelaran", "Bennett", "Castillo", "Moreau", "Larsen", "Singh", "Delgado", "Park", "Walker"]
+DERBY_RANKS = [(0, "BATBOY", (150, 150, 160)), (3, "ROOKIE", (205, 130, 70)), (6, "ALL-STAR", (200, 205, 225)),
+               (9, "SLUGGER", (255, 205, 60)), (12, "LEGEND", (120, 230, 255))]
+MONEY_VALUE = 2                                              # the money ball is worth this many home runs
+DERBY_CARD_RECTS = [pygame.Rect(245 + i * 270, 340, 250, 300) for i in range(3)]      # (in the menu panel's space)
+
+
+def make_derby_hitters():
+    """Three random hitters to choose from: a contact hitter (easy to time), a balanced one and a slugger (hits it farthest)."""
+    tiers = [("CONTACT", (0.86, 0.97), (1.10, 1.18), (1.00, 1.18)),
+             ("BALANCED", (1.03, 1.12), (1.00, 1.06), (0.90, 1.08)),
+             ("SLUGGER", (1.20, 1.34), (0.88, 0.95), (0.80, 0.95))]
+    random.shuffle(tiers)
+    firsts, lasts = random.sample(DERBY_FIRST, 3), random.sample(DERBY_LAST, 3)
+    nums = random.sample(range(1, 100), 3)
+    skins = random.sample(SKIN_TONES, 3) if len(SKIN_TONES) >= 3 else [random.choice(SKIN_TONES) for _ in range(3)]
+    out = []
+    for i, (tier, pw, ct, sp) in enumerate(tiers):
+        out.append(dict(name=f"{firsts[i]} {lasts[i]}", num=nums[i], power=round(random.uniform(*pw), 2), contact=round(random.uniform(*ct), 2),
+                        speed=round(random.uniform(*sp), 2), skin=skins[i], bat=random.randrange(len(BAT_STYLES)), tier=tier,
+                        ab=0, h=0, hr=0))
+    return out
+
+
+def draw_derby_pick(menu, surf):
+    """The hitter select screen (drawn in the panel's space): three random hitters with different power."""
+    panel = pygame.Surface((840, 424), pygame.SRCALPHA)
+    pygame.draw.rect(panel, (10, 14, 34, 220), panel.get_rect(), border_radius=18)
+    pygame.draw.rect(panel, (255, 255, 255, 60), panel.get_rect(), 2, border_radius=18)
+    surf.blit(panel, (220, 272))
+    draw_text(surf, "HOME RUN DERBY", 640, 308, 26, GOLD)
+    draw_text(surf, "Pick your hitter  -  10 outs, then one MONEY BALL worth 2 HR", 640, 330, 13, (200, 205, 225), outline=False)
+    tier_color = {"CONTACT": (110, 198, 255), "BALANCED": (200, 205, 225), "SLUGGER": (255, 150, 60)}
+    for n, (rect, h) in enumerate(zip(DERBY_CARD_RECTS, menu.derby_choices)):
+        hover = rect.collidepoint(menu.mouse)
+        r = rect.inflate(8, 8) if hover else rect
+        pygame.draw.rect(surf, (36, 46, 96) if hover else (22, 28, 60), r, border_radius=14)
+        pygame.draw.rect(surf, GOLD if hover else (110, 120, 160), r, 3 if hover else 2, border_radius=14)
+        cx = rect.centerx
+        draw_text(surf, h["tier"], cx, rect.y + 24, 16, tier_color[h["tier"]])
+        pygame.draw.ellipse(surf, (28, 60, 36), (cx - 46, rect.y + 192, 92, 18))
+        draw_person(surf, cx, rect.y + 206, 3.4 + (0.15 if hover else 0), (240, 240, 240), menu.team_color, skin=h["skin"], shadow=False)
+        bat = BAT_STYLES[h["bat"]]
+        pygame.draw.line(surf, bat["body"], (cx + 34, rect.y + 168), (cx + 62, rect.y + 96), 6)         # his bat, leaning on his shoulder
+        pygame.draw.line(surf, bat["handle"] or bat["body"], (cx + 34, rect.y + 168), (cx + 40, rect.y + 152), 6)
+        draw_text(surf, h["name"].upper(), cx, rect.y + 232, 18)
+        draw_text(surf, f"#{h['num']}", cx, rect.y + 250, 12, (200, 205, 225), outline=False)
+        for k, (label, value) in enumerate((("POWER", h["power"] * bat["power"]), ("TIMING", h["contact"] * bat["window"]))):
+            py = rect.y + 266 + k * 16
+            draw_text(surf, label, rect.x + 22, py + 8, 10, (200, 205, 225), outline=False, align="left")
+            for i in range(5):
+                pygame.draw.rect(surf, GOLD if i < pips(value) else (70, 76, 98), (rect.x + 92 + i * 26, py, 22, 9), border_radius=2)
+        draw_text(surf, str(n + 1), rect.x + 14, rect.y + 20, 14, (150, 156, 180), outline=False)
+    draw_text(surf, "Click a hitter (or press 1, 2, 3)   |   ESC: back", 640, 668, 13, (190, 195, 215))
+
+
+def derby_rank(hr):
+    name, color = DERBY_RANKS[0][1], DERBY_RANKS[0][2]
+    for need, n, c in DERBY_RANKS:
+        if hr >= need:
+            name, color = n, c
+    return name, color
+
+
+def load_derby_record():
+    rec = dict(best_hr=0, longest=0, best_streak=0, games=0, total_hr=0, money_hits=0)
+    saved = read_json("derby", {})
+    if isinstance(saved, dict):
+        rec.update({k: v for k, v in saved.items() if k in rec and isinstance(v, int)})
+    return rec
+
+
+def fmt_time(t):
+    t = max(0, int(math.ceil(t)))
+    return f"{t // 60}:{t % 60:02d}"
+
+
+def replay_landing(sideways, feet):
+    """Where a replay home run comes down: the 300s to low 400s land in the front rows of the seats, the 400s to low 500s fly farther up
+    into the stands, and anything over 500 ft clears the stadium altogether."""
+    a_l, a_r = math.atan2(U_LEFT[0], -U_LEFT[1]), math.atan2(U_RIGHT[0], -U_RIGHT[1])
+    a = a_l + clamp((sideways + 300) / 600, 0.04, 0.96) * (a_r - a_l)
+    if feet <= 420:
+        frac = 0.86 + clamp(feet - 350, 0, 70) / 70 * 0.06
+    elif feet <= 500:
+        frac = 1.0 + (feet - 420) / 80 * 0.38
+    else:
+        frac = 1.62 + clamp(feet - 500, 0, 80) / 80 * 0.45
+    d = SPRAY_MAX_PX * frac
+    return HOME[0] + math.sin(a) * d, HOME[1] - math.cos(a) * d
+
+
+def draw_aerial_field(surf, cam, scale, t):
+    """A drone's-eye view of the park (used by the replay): field coordinates are mapped so `cam` is at the middle of the screen."""
+    W, H = surf.get_size()
+    def pt(px, py):
+        return (W / 2 + (px - cam[0]) * scale, H / 2 + (py - cam[1]) * scale)
+    a_l, a_r = math.atan2(U_LEFT[0], -U_LEFT[1]), math.atan2(U_RIGHT[0], -U_RIGHT[1])
+    def arc(frac, n=36):
+        return [pt(HOME[0] + math.sin(a_l + (a_r - a_l) * i / n) * SPRAY_MAX_PX * frac, HOME[1] - math.cos(a_l + (a_r - a_l) * i / n) * SPRAY_MAX_PX * frac)
+                for i in range(n + 1)]
+    surf.fill((12, 18, 30))
+    pygame.draw.polygon(surf, (50, 54, 72), [pt(*HOME)] + arc(1.45))                                      # the stands
+    rnd = random.Random(11)
+    for _ in range(500):                                                                                   # fans
+        a = rnd.uniform(a_l, a_r)
+        r = rnd.uniform(0.88, 1.42) * SPRAY_MAX_PX
+        x, y = pt(HOME[0] + math.sin(a) * r, HOME[1] - math.cos(a) * r)
+        surf.fill(rnd.choice(((200, 70, 70), (230, 200, 80), (90, 130, 220), (230, 230, 240), (120, 120, 140))), (x, y, 4, 4))
+    pygame.draw.polygon(surf, (30, 82, 52), [pt(*HOME)] + arc(SPRAY_FENCE + 0.04))                        # the wall
+    pygame.draw.polygon(surf, (176, 124, 76), [pt(*HOME)] + arc(SPRAY_FENCE))                             # warning track
+    for i, frac in enumerate((0.80, 0.72, 0.64, 0.56, 0.48, 0.40, 0.32)):                                  # mown stripes
+        pygame.draw.polygon(surf, (52, 138, 60) if i % 2 == 0 else (44, 120, 52), [pt(*HOME)] + arc(frac))
+    square = [pt(*BASES[k]) for k in range(4)]
+    pygame.draw.polygon(surf, (176, 124, 76), square)
+    mid = (sum(b[0] for b in BASES[:4]) / 4, sum(b[1] for b in BASES[:4]) / 4)
+    pygame.draw.polygon(surf, (50, 130, 58), [pt(mid[0] + (b[0] - mid[0]) * 0.62, mid[1] + (b[1] - mid[1]) * 0.62) for b in BASES[:4]])
+    for ang in (a_l, a_r):
+        pygame.draw.line(surf, WHITE, pt(*HOME), pt(HOME[0] + math.sin(ang) * SPRAY_MAX_PX * 1.5, HOME[1] - math.cos(ang) * SPRAY_MAX_PX * 1.5), 2)
+    for b in BASES[1:4]:
+        x, y = pt(*b)
+        pygame.draw.rect(surf, WHITE, (x - 5 * scale, y - 5 * scale, 10 * scale, 10 * scale))
+    mx, my = pt(*MOUND)
+    pygame.draw.circle(surf, (190, 140, 90), (mx, my), max(3, int(8 * scale)))
+    hx, hy = pt(*HOME)
+    pygame.draw.polygon(surf, WHITE, [(hx - 5 * scale, hy), (hx + 5 * scale, hy), (hx + 5 * scale, hy + 5 * scale), (hx, hy + 10 * scale), (hx - 5 * scale, hy + 5 * scale)])
+
+
+def draw_hr_replay(surf, t, rep, skin, team_color):
+    """The drone replay of a monster home run. First the bat meets the ball in slow motion, then a drone follows the ball and the
+    glowing trail it leaves. rep = dict(dist, sideways, mph, angle)."""
+    W, H = surf.get_size()
+    if t < REPLAY_IMPACT:                                                        # ---- the impact ----
+        scene = pygame.Surface((W, H))
+        scene.fill((8, 11, 24))
+        rnd = random.Random(5)
+        for _ in range(60):                                                      # out-of-focus stadium lights
+            c = rnd.choice(((255, 240, 180), (255, 200, 120), (180, 210, 255)))
+            glow = pygame.Surface((60, 60), pygame.SRCALPHA)
+            pygame.draw.circle(glow, c + (40,), (30, 30), rnd.randint(8, 28))
+            scene.blit(glow, (rnd.randrange(W), rnd.randrange(0, 420)))
+        pygame.draw.rect(scene, (44, 110, 50), (0, 600, W, 120))
+        pygame.draw.rect(scene, (176, 124, 76), (0, 640, W, 80))
+        tc = 1.0
+        u = clamp(t / tc, 0, 1)
+        theta = math.radians(lerp(158, 48, u ** 0.85))
+        P, L = (470.0, 650.0), 340.0
+        tip = (P[0] + L * math.cos(theta), P[1] - L * math.sin(theta))
+        C = (P[0] + L * math.cos(math.radians(48)), P[1] - L * math.sin(math.radians(48)))
+        draw_real_bat(scene, P, tip, 30)
+        pygame.draw.circle(scene, (235, 235, 235), P, 20)                         # his hands
+        pygame.draw.circle(scene, (90, 90, 90), P, 20, 3)
+        if t < tc:                                                               # the ball comes in
+            bx, by = C[0] - 760 * (1 - u) ** 1.7, C[1] + 60 * (1 - u) ** 1.7
+            pygame.draw.circle(scene, WHITE, (bx, by), 22)
+            pygame.draw.circle(scene, (204, 51, 51), (bx, by), 22, 3)
+            draw_text(scene, "BAT MEETS BALL", 640, 150, 30, GOLD)
+        else:                                                                    # ...and leaves
+            s = t - tc
+            ang = math.radians(rep["angle"] + 22)
+            d = 1400 * s ** 0.8
+            bx, by = C[0] + d * math.cos(ang), C[1] - d * math.sin(ang)
+            for k in range(8):                                                   # streak
+                f = k / 8
+                pygame.draw.circle(scene, (255, 255, int(200 + 55 * (1 - f))), (C[0] + d * f * math.cos(ang), C[1] - d * f * math.sin(ang)), int(4 + 18 * f))
+            pygame.draw.circle(scene, WHITE, (bx, by), 22)
+            pygame.draw.circle(scene, (204, 51, 51), (bx, by), 22, 3)
+            if s < 0.35:                                                         # the flash and the shockwave
+                for k in range(14):
+                    a = k * 0.449
+                    r0, r1 = 24 + s * 120, 80 + s * 520
+                    pygame.draw.line(scene, (255, 245, 180), (C[0] + math.cos(a) * r0, C[1] + math.sin(a) * r0), (C[0] + math.cos(a) * r1, C[1] + math.sin(a) * r1), 6)
+                pygame.draw.circle(scene, (255, 255, 255), C, int(30 + s * 600), 4)
+            draw_text(scene, f"EXIT VELOCITY  {rep['mph']} MPH", 980, 230, 26, WHITE)
+            draw_text(scene, f"LAUNCH ANGLE  {rep['angle']} DEG", 980, 266, 22, (200, 205, 225))
+        off = (random.randint(-7, 7), random.randint(-7, 7)) if 1.0 <= t < 1.3 else (0, 0)
+        surf.fill((0, 0, 0))
+        surf.blit(scene, off)
+    else:                                                                        # ---- the drone follows the ball ----
+        s = t - REPLAY_IMPACT
+        u = clamp(s / REPLAY_FLIGHT, 0, 1)
+        ud = 1 - (1 - u) ** 1.35                                                 # the ball slows a little as it goes
+        L_ = replay_landing(rep["sideways"], rep["dist"])
+        out_of_park = rep["dist"] > 500
+        kb = 1.25
+        zoom = lerp(1.5, 0.72, smooth(u))
+        scale = kb * zoom
+        gx0, gy0 = HOME[0] + (L_[0] - HOME[0]) * ud, HOME[1] + (L_[1] - HOME[1]) * ud       # the drone hangs over the ball's ground point
+        cam = (gx0, gy0 - 70 / scale)
+        draw_aerial_field(surf, cam, scale, t)
+        peak = lerp(150, 340, clamp((rep["dist"] - 380) / 200, 0, 1))
+        def ground(uu):
+            g = 1 - (1 - uu) ** 1.35
+            return HOME[0] + (L_[0] - HOME[0]) * g, HOME[1] + (L_[1] - HOME[1]) * g
+        def screen(uu):
+            gx, gy = ground(uu)
+            h = peak * math.sin(math.pi * uu) ** 0.85
+            return (W / 2 + (gx - cam[0]) * scale, H / 2 + (gy - cam[1]) * scale - h * scale * 0.9), (W / 2 + (gx - cam[0]) * scale, H / 2 + (gy - cam[1]) * scale), h
+        n = max(2, int(u * 70))
+        glow = pygame.Surface((W, H), pygame.SRCALPHA)
+        pts = [screen(u * i / n)[0] for i in range(n + 1)]
+        for i in range(len(pts) - 1):                                           # the glowing trail
+            f = i / max(1, len(pts) - 1)
+            pygame.draw.line(glow, (90, 210, 255, int(60 + 120 * f)), pts[i], pts[i + 1], int(16 * f + 6))
+            pygame.draw.line(glow, (255, 255, 255, int(120 + 135 * f)), pts[i], pts[i + 1], int(6 * f + 2))
+        surf.blit(glow, (0, 0))
+        bp, gp, h = screen(u)
+        pygame.draw.ellipse(surf, (20, 60, 30), (gp[0] - 10, gp[1] - 4, 20, 8))                                # its shadow on the grass
+        pygame.draw.line(surf, (255, 255, 255), bp, gp, 1)
+        pygame.draw.circle(surf, WHITE, bp, int(6 + 6 * h / peak))
+        pygame.draw.circle(surf, (204, 51, 51), bp, int(6 + 6 * h / peak), 2)
+        if u >= 0.5:                                                             # the top of its arc
+            ap = screen(0.5)[0]
+            pygame.draw.circle(surf, GOLD, ap, 6, 2)
+            draw_text(surf, "APEX", ap[0], ap[1] - 14, 12, GOLD)
+        if u >= 1:                                                               # it lands in the seats (or is long gone)
+            r = (s - REPLAY_FLIGHT) * 160
+            pygame.draw.circle(surf, WHITE, gp, int(8 + r), 3)
+            if out_of_park:
+                draw_text(surf, "OUT OF THE PARK!", 640, 150, 46 + int(4 * math.sin(s * 9)), GOLD)
+        shown = int(round(rep["dist"] * min(1.0, ud)))
+        draw_text(surf, "DISTANCE", 640, 556, 16, (200, 205, 225))
+        draw_text(surf, f"{shown} FT", 640, 616, 56 + (int(6 * math.sin(s * 10)) if u >= 1 else 0), GOLD if u >= 1 else WHITE)
+        draw_text(surf, "DRONE CAM", 112, 108, 18, WHITE)
+    shade = pygame.Surface((W, H), pygame.SRCALPHA)                              # the cinema bars, the REPLAY tag and a soft vignette
+    pygame.draw.rect(shade, (0, 0, 0, 255), (0, 0, W, 64))
+    pygame.draw.rect(shade, (0, 0, 0, 255), (0, H - 64, W, 64))
+    for k in range(8):
+        pygame.draw.rect(shade, (0, 0, 0, 18), (k * 6, 64 + k * 6, W - k * 12, H - 128 - k * 12), 6)
+    surf.blit(shade, (0, 0))
+    if int(t * 2) % 2 == 0:
+        pygame.draw.circle(surf, RED, (60, 36), 8)
+    draw_text(surf, "REPLAY", 150, 44, 22, WHITE, align="left") if False else draw_text(surf, "REPLAY", 70, 44, 22, WHITE, align="left")
+    draw_text(surf, f"{rep['dist']} FT HOME RUN", W - 30, 44, 20, GOLD, align="right")
+
+
+def draw_derby_board(surf, game):
+    """The scoreboard during the derby: home runs, a little row of ten out-lights (or the MONEY BALL banner), and the streak."""
+    money = getattr(game, "money_ball", False)
+    pulse = 0.5 + 0.5 * math.sin(game.clock * 8)
+    pygame.draw.rect(surf, (31, 35, 39), (290, 22, 190, 92), border_radius=6)
+    pygame.draw.rect(surf, (255, int(180 + 60 * pulse), 40) if money else (102, 102, 102), (290, 22, 190, 92), 3 if money else 2, border_radius=6)
+    draw_text(surf, "HR DERBY", 385, 41, 12, GOLD, outline=False)
+    draw_text(surf, str(game.derby_hr), 385, 84, 40, (232, 232, 232), outline=False)
+    draw_text(surf, "HR", 440, 80, 13, (200, 205, 225), outline=False)
+    if game.derby_streak > 1:
+        draw_text(surf, f"x{game.derby_streak}", 330, 80, 16, GOLD, outline=False)
+    if money:
+        draw_text(surf, f"MONEY BALL  +{MONEY_VALUE}", 385, 104, 12 + int(pulse * 2), (255, 215, 70), outline=False)
+        return
+    low = game.time_left < 10
+    draw_text(surf, fmt_time(game.time_left), 345, 104, 15 + (int(pulse * 2) if low else 0), RED if low else (232, 232, 232), outline=False)
+    frac = clamp(game.time_left / DERBY_TIME, 0, 1)
+    pygame.draw.rect(surf, (60, 66, 80), (372, 98, 98, 8), border_radius=3)
+    pygame.draw.rect(surf, RED if low else (90, 210, 130), (372, 98, int(98 * frac), 8), border_radius=3)
+    draw_text(surf, f"{DERBY_LONG_FT}FT", 452, 46, 8, (200, 205, 225), outline=False)
+    for i in range(2):                                                    # two homers over 450 ft = bonus time
+        pygame.draw.circle(surf, GOLD if i < game.long_count else (150, 156, 170), (443 + i * 12, 58), 4, 0 if i < game.long_count else 1)
+    if game.bonus_flash > 0:
+        draw_text(surf, f"+{int(DERBY_BONUS_TIME)} SEC!", 385, 128, 18, GREEN)
+
+
+_scoreboard_for_games = draw_bat_scoreboard
+
+
+def draw_bat_scoreboard(surf, game):
+    if getattr(game, "is_derby", False):
+        draw_derby_board(surf, game)
+    else:
+        _scoreboard_for_games(surf, game)
+
+
+class Derby(Game):
+    """Home Run Derby (timed, like MLB The Show): one hitter you pick, batting-practice pitches right down the middle, and a clock.
+    Two homers over 450 ft earn bonus time. When the clock hits zero you get one gold MONEY BALL: a single swing worth two home runs.
+    Monster homers (450+ ft) sometimes get a drone replay."""
+    is_derby = True
+    hitter = None
+
+    def configure(self, team_name, team_color, difficulty, innings, logo=None, bat_choice=None, weather_choice=None):
+        previous = getattr(self, "weather_choice", "Random")
+        weather = weather_choice if weather_choice is not None else previous
+        super().configure(team_name, team_color, difficulty, 1, logo, bat_choice, "Night" if weather == "Random" else weather)
+
+    def reset(self):
+        super().reset()
+        self.derby_outs = self.derby_hr = self.derby_streak = self.derby_best_streak = self.derby_longest = 0
+        self.derby_new_record = False
+        self.derby_prev = load_derby_record()
+        self.money_ball, self.money_result, self.derby_log = False, None, []     # derby_log: [(distance, was_money_ball)]
+        self.time_left, self.time_up, self.timer_on = DERBY_TIME, False, False   # the clock starts with the first pitch
+        self.long_count, self.bonus_flash, self.replay, self.replay_then = 0, 0.0, None, None
+        if self.hitter:                                                  # the hitter you picked (with his own bat)
+            self.lineup[DERBY_BATTER] = dict(self.hitter, ab=0, h=0, hr=0)
+            if self.bat_choice:
+                self.lineup[DERBY_BATTER]["bat"] = self.bat_choice - 1
+        self.set_batter(DERBY_BATTER)
+        self.show_message("HOME RUN DERBY", f"{self.lineup[DERBY_BATTER]['name']} is up!  {int(DERBY_TIME)} seconds - two {DERBY_LONG_FT} ft homers add {int(DERBY_BONUS_TIME)}   Best: {self.derby_prev['best_hr']} HR", 3.0)
+
+    # ---- the pitcher throws batting practice ----
+    def choose_pitch(self):
+        return random.choices(["Fastball", "Curveball"], weights=[70, 30])[0]
+
+    def choose_zone(self):
+        return 0                                                         # always right down the middle
+
+    def start_pitch(self):
+        super().start_pitch()
+        self.timer_on = not self.money_ball                              # the clock runs from the first pitch
+        self.pitch.duration *= DERBY_PITCH_SLOWDOWN
+        self.pitch.mph = round(self.pitch.mph / DERBY_PITCH_SLOWDOWN)
+
+    def end_at_bat(self):
+        self.balls = self.strikes = 0                                    # (the same batter keeps hitting - no new batter each swing)
+
+    def update(self, dt):
+        if not self.paused:
+            self.bonus_flash = max(0.0, self.bonus_flash - dt)
+            if self.timer_on and not self.money_ball and self.state in ("WAIT", "WIND_UP", "PITCH", "BALL_IN_FLIGHT", "MESSAGE"):
+                self.time_left = max(0.0, self.time_left - dt)
+                if self.time_left <= 0:
+                    self.time_up = True
+        super().update(dt)
+        if self.paused:
+            return
+        if self.state == "HR_REPLAY" and self.state_time >= REPLAY_IMPACT + REPLAY_FLIGHT + REPLAY_HOLD:
+            self.end_replay()
+        elif self.time_up and not self.money_ball and self.state == "WAIT":      # time!  ...one more swing
+            self.timer_on = False
+            self.show_message("TIME!", f"MONEY BALL! One swing, worth {MONEY_VALUE} home runs", 2.8, then=self.begin_money_ball)
+
+    def press_swing(self):
+        if self.state == "HR_REPLAY" and not self.paused:
+            if self.state_time > 0.8:
+                self.end_replay()                                        # click / SPACE skips the replay
+            return
+        super().press_swing()
+
+    def start_replay(self):
+        self.set_state("HR_REPLAY")
+
+    def end_replay(self):
+        after, self.replay_then = self.replay_then, None
+        if after:
+            after()
+        else:
+            self.set_state("WAIT")
+
+    def draw(self, canvas):
+        if self.state == "HR_REPLAY":
+            draw_hr_replay(canvas, self.state_time, self.replay, self.skin, self.team_color)
+        else:
+            super().draw(canvas)
+
+    def draw_bat_view(self, surf):
+        BALL_GOLD[0] = self.money_ball and self.state in ("WIND_UP", "PITCH")
+        try:
+            super().draw_bat_view(surf)
+        finally:
+            BALL_GOLD[0] = False
+        if self.money_ball and self.state in ("WAIT", "WIND_UP", "PITCH"):       # a golden glow around the hitter
+            glow = pygame.Surface((170, 190), pygame.SRCALPHA)
+            pygame.draw.ellipse(glow, (255, 205, 60, 45 + int(25 * math.sin(self.clock * 8))), (0, 0, 170, 190))
+            surf.blit(glow, (230, 230))
+            for i in range(10):
+                a = self.clock * 2 + i * 0.63
+                pygame.draw.circle(surf, (255, 235, 140), (315 + math.cos(a) * 62, 330 + math.sin(a * 1.3) * 78), 2)
+
+    # ---- what a swing does ----
+    def make_contact(self, quality, raw_error):
+        power = self.lineup[self.batter_i]["power"] * CURRENT_BAT["power"]
+        chance = clamp(DERBY_HR_CHANCE[quality] * (1 + (power - 1) * 0.8), 0.0, 1.0)
+        if quality != "perfect_perfect" and random.random() >= chance:
+            small = "Just short of the wall" if quality in ("perfect", "good") else "Not enough on it"
+            return self.derby_out(random.choice(("FLY OUT", "GROUND OUT", "POP UP", "LINE OUT")), small)
+        x, y, _ = pitch_position(self.pitch, self.pitch.time / self.pitch.duration)
+        sideways = clamp(raw_error * 1500 + random.uniform(-140, 140), -300, 300)
+        info = HIT_INFO["HR"]
+        self.hit = Hit("HR", quality, x, y, sideways, info["flight"], info["arc"])
+        self.hit.distance = self.hr_distance = random.randint(*DERBY_DISTANCE[quality])
+        self.board_hit = False
+        self.fan = (x + sideways, hr_end_y(self.hr_distance)) if random.random() < FAN_CATCH_CHANCE * 1.5 else None
+        self.hit.flip = self.fan is None and self.hr_distance >= FLIP_MIN_FT and random.random() < FLIP_CHANCE
+        if quality == "perfect":
+            self.shake, self.shake_mag = SHAKE_TIME, SHAKE_PERFECT
+        elif quality == "perfect_perfect":
+            self.shake, self.shake_mag = SHAKE_TIME, SHAKE_PERFECT_PERFECT
+        self.set_state("HR_CUTSCENE" if quality == "perfect_perfect" and SLUGGER_CUTSCENE else "BALL_IN_FLIGHT")
+
+    def finish_pitch_without_contact(self):
+        result = self.pitch.result
+        if result == "foul":
+            self.show_message("FOUL BALL", "No out - keep swinging!" if not self.money_ball else "Still the MONEY BALL - swing again!", DERBY_MESSAGE_TIME)
+        elif result == "miss":
+            self.derby_out("SWING & MISS", "")
+        else:
+            self.derby_out("TOOK A STRIKE", "Swing at it!")
+
+    def derby_out(self, big, small=""):
+        if self.money_ball:                                              # the money ball is one swing: no HR, and it is over
+            self.money_result = "miss"
+            return self.show_message(big, "No luck on the MONEY BALL", 1.8, then=self.derby_finish)
+        self.derby_streak = 0                                            # (no outs any more: a miss just breaks your streak)
+        self.show_message(big, small or "Keep swinging!", DERBY_MESSAGE_TIME)
+
+    def begin_money_ball(self):
+        self.money_ball = True
+        self.cheer(1.0)
+        self.set_state("WAIT")
+
+    def home_run(self):
+        worth = MONEY_VALUE if self.money_ball else 1
+        longest_yet = self.derby_hr > 0 and self.hr_distance > self.derby_longest
+        self.derby_hr += worth
+        self.derby_streak += 1
+        self.derby_best_streak = max(self.derby_best_streak, self.derby_streak)
+        self.derby_longest = max(self.derby_longest, self.hr_distance)
+        self.derby_log.append((self.hr_distance, self.money_ball))
+        bonus = False
+        if not self.money_ball and self.hr_distance >= DERBY_LONG_FT:    # two homers over 450 ft = extra time
+            self.long_count += 1
+            if self.long_count >= 2:
+                self.long_count, bonus = 0, True
+                self.time_left += DERBY_BONUS_TIME
+                self.bonus_flash = 2.5
+                if self.time_left > 0:
+                    self.time_up = False
+        self.stats["hr"] += worth
+        self.credit(hit=True, hr=True)
+        self.cheer(1.0)
+        tag = {3: "HEATING UP!", 5: "ON FIRE!", 7: "UNSTOPPABLE!"}.get(self.derby_streak, "")
+        small = f"{self.derby_hr} HR" + (f"   |   {self.derby_streak} in a row!" if self.derby_streak > 1 else "")
+        if longest_yet:
+            small += "   LONGEST YET!"
+        if tag:
+            small += f"   {tag}"
+        if bonus:
+            small += f"   +{int(DERBY_BONUS_TIME)} SECONDS!"
+        if self.fan:
+            small += "   A fan makes the catch!"
+        replay = self.hr_distance >= DERBY_REPLAY_FT and random.random() < DERBY_REPLAY_CHANCE
+        if replay:                                                       # a drone replay of the monster shot (about one in three)
+            self.replay = dict(dist=self.hr_distance, sideways=self.hit.sideways, mph=random.randint(108, 119), angle=random.randint(24, 35))
+        self.celebrating, self.fireworks_launched = True, 0
+        self.add_fireworks(385, 70)
+        if self.derby_streak >= 3:
+            self.add_fireworks(250, 90)
+            self.add_fireworks(520, 90)
+        if self.money_ball:
+            self.money_result = "hit"
+            for fx in (180, 300, 470, 590):
+                self.add_fireworks(fx, 100)
+            if replay:
+                self.replay_then = self.derby_finish
+            return self.show_message(f"MONEY BALL!  +{MONEY_VALUE}  {self.hr_distance} FT", small, 2.4, then=self.start_replay if replay else self.derby_finish)
+        self.show_message(f"HOME RUN!  {self.hr_distance} FT", small, DERBY_MESSAGE_TIME + 0.5, then=self.start_replay if replay else None)
+
+    def derby_finish(self):
+        rec = load_derby_record()
+        self.derby_new_record = self.derby_hr > rec["best_hr"]
+        rec.update(best_hr=max(rec["best_hr"], self.derby_hr), longest=max(rec["longest"], self.derby_longest),
+                   best_streak=max(rec["best_streak"], self.derby_best_streak), games=rec["games"] + 1,
+                   total_hr=rec["total_hr"] + self.derby_hr, money_hits=rec["money_hits"] + (self.money_result == "hit"))
+        write_json("derby", rec)
+        self.set_state("GAME_OVER")
+
+    def draw_game_over(self, surf):
+        shade = pygame.Surface((LOGICAL_W, LOGICAL_H), pygame.SRCALPHA)
+        shade.fill((0, 0, 0, 238))
+        surf.blit(shade, (0, 0))
+        draw_text(surf, "HOME RUN DERBY", 640, 92, 50, GOLD)
+        draw_text(surf, f"{self.lineup[DERBY_BATTER]['name']}  |  {self.team_name}", 640, 134, 22)
+        rank, color = derby_rank(self.derby_hr)
+        mx = 640 - get_font(32).size(rank)[0] / 2 - 30
+        pygame.draw.polygon(surf, color, [(mx - 8, 168), (mx + 8, 168), (mx + 4, 190), (mx - 4, 190)])          # a medal on its ribbon
+        pygame.draw.circle(surf, color, (mx, 198), 13)
+        pygame.draw.circle(surf, WHITE, (mx, 198), 13, 2)
+        pygame.draw.circle(surf, (255, 255, 255), (mx - 4, 194), 3)
+        draw_text(surf, rank, 640, 196, 32, color)
+        draw_text(surf, str(self.derby_hr), 640, 372, 170, WHITE)
+        draw_text(surf, "HOME RUN" if self.derby_hr == 1 else "HOME RUNS", 640, 414, 30, GOLD)
+        if self.derby_new_record:
+            draw_text(surf, "NEW RECORD!", 640, 462, 36 + int(4 * math.sin(self.clock * 8)), GREEN)
+        else:
+            draw_text(surf, f"Record: {self.derby_prev['best_hr']} HR", 640, 462, 22, (200, 205, 225))
+        money = {"hit": ("MONEY BALL: +%d HR!" % MONEY_VALUE, GOLD), "miss": ("MONEY BALL: missed", (200, 205, 225))}.get(self.money_result, ("", WHITE))
+        draw_text(surf, money[0], 640, 500, 22, money[1])
+        draw_text(surf, f"Longest: {self.derby_longest} ft", 400, 540, 22)
+        draw_text(surf, f"Best streak: {self.derby_best_streak}", 880, 540, 22)
+        draw_text(surf, f"Swings: {self.pitch_count}", 640, 540, 20, (200, 205, 225))
+        if self.derby_log:                                               # a bar for every home run: taller = farther
+            draw_text(surf, "HOME RUN LOG", 640, 580, 12, (200, 205, 225), outline=False)
+            n = len(self.derby_log)
+            bw = min(30, 640 // max(n, 1) - 4)
+            x0 = 640 - n * (bw + 4) / 2
+            for i, (dist, is_money) in enumerate(self.derby_log):
+                h = int(lerp(8, 44, clamp((dist - 350) / 210, 0, 1)))
+                bx = x0 + i * (bw + 4)
+                pygame.draw.rect(surf, GOLD if is_money else GREEN, (bx, 640 - h, bw, h), border_radius=3)
+                draw_text(surf, str(dist), bx + bw / 2, 654, 8, WHITE, outline=False)
+        draw_text(surf, "Click or press SPACE for the title screen", 640, 690, 16)
+
+
+# --- the HR DERBY button on the title screen ---------------------------------------
+_menu_side_click = Menu.side_click
+
+
+def _side_click_with_derby(self, i):
+    if i == 1:
+        self.derby_choices = make_derby_hitters()              # three new hitters every time
+        self.screen = "derby_pick"
+    else:
+        _menu_side_click(self, i)
+
+
+Menu.side_click = _side_click_with_derby
+
+
+# =============================================================================
 # 6. MAIN LOOP
 # =============================================================================
 
@@ -4999,16 +5960,20 @@ async def main():
     canvas = pygame.Surface((LOGICAL_W, LOGICAL_H))
     clock = pygame.time.Clock()
 
-    # Show something right away so the page isn't blank while everything is pre-drawn
-    window.fill((14, 17, 22))
-    draw_text(window, "LOADING...", LOGICAL_W // 2, LOGICAL_H // 2, 32, GOLD)
-    pygame.display.flip()
-    await asyncio.sleep(0)
+    def loading():
+        window.fill((14, 17, 22))
+        draw_text(window, "LOADING...", LOGICAL_W // 2, LOGICAL_H // 2, 32, GOLD)
+        pygame.display.flip()
 
-    game = Game()
+    loading()                                                # show something right away so the page isn't blank
+    await asyncio.sleep(0)
+    load_unlocks()                                           # which animations you have already unlocked (saved in the browser)
+    exhibition = Game()
     await asyncio.sleep(0)
     menu = Menu()
     await asyncio.sleep(0)
+    derby = None                                             # built the first time you open the derby (saves loading time)
+    game = exhibition
     mode = "menu"                                            # "menu" (start screen) or "game"
 
     def to_canvas(pos):
@@ -5025,11 +5990,28 @@ async def main():
             if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_F11):
                 continue                                     # no quitting or fullscreen toggling on the web
             if mode == "menu":
-                if menu.handle_event(event, to_canvas):
+                if menu.handle_event(event, to_canvas):      # PLAY BALL: an exhibition game
                     menu.save_settings()
+                    game = exhibition
                     game.configure(menu.team_name, menu.team_color, menu.difficulty, menu.innings,
                                    menu.logo_for_game(), menu.bat_choice, menu.weather_choice)
                     mode = "game"
+                elif getattr(menu, "want_derby", False):     # HR DERBY
+                    menu.want_derby = False
+                    problem = name_problem(menu.team_name)
+                    if problem:
+                        menu.screen, menu.name_error, menu.name_error_t = "home", problem, 2.5
+                    else:
+                        menu.save_settings()
+                        if derby is None:
+                            loading()
+                            await asyncio.sleep(0)
+                            derby = Derby()
+                        game = derby
+                        game.hitter = getattr(menu, "derby_hitter", None)
+                        game.configure(menu.team_name, menu.team_color, menu.difficulty, 1,
+                                       menu.logo_for_game(), menu.bat_choice, menu.weather_choice)
+                        mode = "game"
             elif event.type == pygame.MOUSEMOTION:
                 game.mouse = to_canvas(event.pos)
                 if game.paused:

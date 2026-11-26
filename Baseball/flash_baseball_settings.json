@@ -1,8 +1,1 @@
-{
-  "team_name": "ROOTFOLDER",
-  "team_color": "Navy",
-  "difficulty": "Medium",
-  "innings": 3,
-  "bat_choice": 0,
-  "weather": "Random"
-}
+{"team_name": "SLUGGERS", "team_color": "Navy", "difficulty": "Medium", "innings": 3, "bat_choice": 0, "weather": "Random"}
