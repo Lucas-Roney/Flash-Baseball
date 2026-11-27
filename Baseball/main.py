@@ -244,7 +244,7 @@ METER_EXTRA_TIME = 0.25
 # For each contact quality: (cumulative chance, result)
 HIT_TABLES = {
     "perfect_perfect": [(1.00, "HR")],
-    "perfect":         [(0.3, "HR"), (0.5, "2B"), (0.55, "3B"), (0.85, "1B"), (0.92, "GROUND_OUT"), (1.00, "FLY_OUT")],
+    "perfect":         [(0.28, "HR"), (0.48, "2B"), (0.55, "3B"), (0.80, "1B"), (0.92, "GROUND_OUT"), (1.00, "FLY_OUT")],
     "good":            [(0.28, "1B"), (0.36, "2B"), (0.78, "GROUND_OUT"), (1.00, "FLY_OUT")],
     "weak":            [(0.18, "1B"), (0.76, "GROUND_OUT"), (1.00, "FLY_OUT")],
 }
@@ -742,7 +742,7 @@ CROWD_CPU_FANS = 0.08            # ...and the CPU's red
 def build_field_crowd():
     """Positions + personalities for every fan in the overhead view's stands."""
     rnd, crowd, half = random.Random(11), [], LOGICAL_W / 2
-    for _ in range(2700):
+    while len(crowd) < 1300:                                 # about the same fans per square inch as the batting view's stands
         x = rnd.random() * LOGICAL_W
         wall_y = 240 - 70 * math.sqrt(max(0, 1 - ((x - half) / half) ** 2))
         if wall_y - 12 > 108:
@@ -763,7 +763,10 @@ def make_fan(rnd, x, y, size):
             rnd.uniform(2.2, 4.6), size, kind)
 
 
-def draw_crowd(surf, crowd, t, energy, team_color, width):
+CROWD_KEEP = {"Windy": 0.7, "Rain": 0.4}      # share of the fans who turn up in bad weather (clear and night = everybody)
+
+
+def draw_crowd(surf, crowd, t, energy, team_color, width, keep=1.0):
     """Every fan bobs, sways and sometimes changes colour (a new jersey, a jacket coming off...). The bigger the energy,
     the higher they jump, and fans with energy to spare throw their arms up. Now and then a stadium wave rolls across
     and a few camera flashes pop."""
@@ -774,6 +777,8 @@ def draw_crowd(surf, crowd, t, energy, team_color, width):
     fill = surf.fill
     sin = math.sin
     for x, y, c1, c2, phase, rate, size, kind in crowd:
+        if keep < 1.0 and (phase * 7.31) % 1.0 >= keep:
+            continue                                                                   # this fan stayed home
         local = t * rate + phase
         lift = max(0.0, sin(local)) * amp
         if wave_on:
@@ -995,6 +1000,10 @@ def pips(value):
     return int(clamp(round((value - 0.78) / 0.11) + 1, 1, 5))
 
 
+WET = [False]                    # True while it is raining: slides and dives throw MUD instead of dust
+MUD = (92, 66, 44)
+
+
 def draw_close_play(surf, bag, t, result, tres):
     """The close-play effect at a bag: a pulsing ring + banner, then the umpire's call (arms out = SAFE, fist up = OUT)."""
     bx, by = bag
@@ -1010,7 +1019,7 @@ def draw_close_play(surf, bag, t, result, tres):
         for i in range(9):
             a = i * 0.7 + 0.3
             r = 8 + tres * 70
-            pygame.draw.circle(surf, (205, 175, 125), (bx + math.cos(a) * r, by - 8 + math.sin(a) * r * 0.5), max(1, int(7 - tres * 9)))
+            pygame.draw.circle(surf, MUD if WET[0] else (205, 175, 125), (bx + math.cos(a) * r, by - 8 + math.sin(a) * r * 0.5), max(1, int(7 - tres * 9)))
     if tres < CLOSE_SHOW_TIME:
         if result == "safe":
             pygame.draw.line(surf, ump, (ux - 4, uy - 31), (ux - 30, uy - 29), 5)
@@ -1022,7 +1031,7 @@ def draw_close_play(surf, bag, t, result, tres):
             draw_text(surf, "OUT!", bx, by - 74, 40, RED)
 
 
-def draw_close_cutscene(surf, gap, dist, result, tres, t, skin, team_color):
+def draw_close_cutscene(surf, gap, dist, result, tres, t, skin, team_color, post=None):
     """The close-play CUTSCENE (zoomed in, like the slugger one): the runner dives for the bag while the fielder reaches for him with
     the ball coming in. gap = how far (in bases) the runner still has to go, dist = how far (pixels) the ball is from the bag.
     result = None until he arrives, then "safe" / "out"; tres = seconds since he arrived; t = seconds since the cutscene began."""
@@ -1038,7 +1047,7 @@ def draw_close_cutscene(surf, gap, dist, result, tres, t, skin, team_color):
     surf.fill((52, 128, 58), (0, 206, W, 150))
     for i in range(6):
         surf.fill((60, 140, 66), (0, 206 + i * 50, W, 25))
-    surf.fill((186, 132, 84), (0, 356, W, H - 356))
+    surf.fill((150, 106, 70) if WET[0] else (186, 132, 84), (0, 356, W, H - 356))
     pygame.draw.line(surf, WHITE, (0, 356), (W, 356), 3)
     pygame.draw.ellipse(surf, (170, 118, 72), (bagx - 360, bagy - 70, 720, 210))
     ump = (26, 26, 32)
@@ -1062,7 +1071,13 @@ def draw_close_cutscene(surf, gap, dist, result, tres, t, skin, team_color):
     head_x = bagx - 36 - clamp(gap, 0, 0.6) * 620
     rx, ry = head_x - 14 * rs, bagy + 22
     pygame.draw.ellipse(surf, (150, 100, 62), (rx - 70, ry - 8, 190, 26))                # his shadow on the dirt
+    if WET[0]:
+        pygame.draw.ellipse(surf, (96, 70, 48), (bagx - 330, bagy + 6, 520, 46))         # a wet, muddy trough where he slides
+        pygame.draw.ellipse(surf, (118, 86, 58), (bagx - 250, bagy + 12, 300, 26))
     draw_person(surf, rx, ry, rs, (240, 240, 240), team_color, sliding=True, skin=skin, shadow=False)
+    if WET[0]:                                                                           # his white uniform is caked in mud
+        pygame.draw.ellipse(surf, MUD, (rx - 12 * rs, ry - 7 * rs, 20 * rs, 6 * rs))
+        pygame.draw.ellipse(surf, (110, 80, 54), (rx + 2 * rs, ry - 9 * rs, 9 * rs, 4 * rs))
     hand = (head_x + 14, ry - 20)                                                          # his outstretched hand
     pygame.draw.line(surf, skin, (head_x - 4, ry - 22), hand, 11)
     # --- the fielder with the glove ---
@@ -1093,13 +1108,20 @@ def draw_close_cutscene(surf, gap, dist, result, tres, t, skin, team_color):
         for i in range(14):
             a = i * 0.9 + 0.2
             r = 20 + tres * 160 + (i % 3) * 14
-            pygame.draw.circle(surf, (214, 186, 140), (bagx - 10 + math.cos(a) * r * 1.4, bagy + 20 + math.sin(a) * r * 0.45 - tres * 30), max(2, int(26 - tres * 18)))
+            pygame.draw.circle(surf, MUD if WET[0] else (214, 186, 140), (bagx - 10 + math.cos(a) * r * 1.4, bagy + 20 + math.sin(a) * r * 0.45 - tres * 30), max(2, int(26 - tres * 18)))
     if result == "out" and tres < 0.5:                                                    # the tag: a flash
         for i in range(10):
             a = i * 0.63
             r0, r1 = 20 + tres * 40, 60 + tres * 120
             pygame.draw.line(surf, (255, 240, 170), (tag[0] + math.cos(a) * r0, tag[1] + math.sin(a) * r0),
                              (tag[0] + math.cos(a) * r1, tag[1] + math.sin(a) * r1), 5)
+    if WET[0] and result is not None and tres < 1.1:                                      # mud splatters up off the slide (out or safe)
+        for i in range(12):
+            a = i * 1.1 + 0.4
+            r = 30 + tres * 150 + (i % 4) * 18
+            pygame.draw.circle(surf, MUD, (bagx - 40 + math.cos(a) * r * 1.2, bagy + 10 - abs(math.sin(a)) * r * 0.6), max(2, int(12 - tres * 9)))
+    if post:
+        post(surf)                                                                        # the weather over the whole scene
     # --- cinema: bars, labels, fade-in ---
     surf.fill((0, 0, 0), (0, 0, W, 64))
     surf.fill((0, 0, 0), (0, H - 64, W, 64))
@@ -1988,9 +2010,12 @@ def draw_dive(surf, x, y, scale, body, cap, t, direction=1, skin=SKIN_DEFAULT, s
     pygame.draw.circle(surf, skin, (x + 19 * d * s, cy - 3 * s), 5 * s)                        # head
     pygame.draw.circle(surf, cap, (x + 19 * d * s, cy - 5 * s), 5.5 * s, draw_top_left=True, draw_top_right=True)
     pygame.draw.circle(surf, (120, 75, 40), (x + 32 * d * s, cy - 5 * s), 5 * s)                          # glove
+    if WET[0]:
+        dust_color = MUD                                           # rain: he skids through mud
+        pygame.draw.ellipse(surf, MUD, (x - 14 * s, cy - 2 * s, 20 * s, 6 * s))
     age = t - DIVE_TIME * 0.5                                      # a cloud of dust kicks up as he lands
     if age > 0:
-        for i in range(7):
+        for i in range(10 if WET[0] else 7):
             a = i / 6
             r = (3 + 7 * a) * s * max(0.0, 1 - age / 0.9)
             if r >= 1:
@@ -2344,14 +2369,14 @@ class Game:
         """The batting-view background with the moving crowd on top."""
         surf.blit(self.bat_background, (0, 0))
         draw_crowd(surf, self.bat_crowd, self.clock if t is None else t,
-                   self.crowd_energy if energy is None else energy, self.team_color, BAT_W)
+                   self.crowd_energy if energy is None else energy, self.team_color, BAT_W, CROWD_KEEP.get(self.weather, 1.0))
 
     def blit_field_scene(self, surf, t=None, energy=None):
         """The overhead field with the moving crowd and the two dugouts (with players) on top."""
         t = self.clock if t is None else t
         e = self.crowd_energy if energy is None else energy
         surf.blit(self.field_background, (0, 0))
-        draw_crowd(surf, self.field_crowd, t, e, self.team_color, LOGICAL_W)
+        draw_crowd(surf, self.field_crowd, t, e, self.team_color, LOGICAL_W, CROWD_KEEP.get(self.weather, 1.0))
         cpu_e = self.cpu_cheer if energy is None else energy * 0.8
         (hx, hy), (cx, cy) = DUGOUTS["left"], DUGOUTS["right"]
         draw_dugout_players(surf, hx, hy, (240, 240, 240), self.team_color, t, e, 0.4)       # your guys: left dugout
@@ -3664,7 +3689,7 @@ class Game:
         elif self.fp and self.close_cutscene_active():
             gap, dist = self.close_vals()
             c = self.fp.close
-            draw_close_cutscene(canvas, gap, dist, c["result"], c["tres"], c["t"], c["skin"], self.team_color)
+            draw_close_cutscene(canvas, gap, dist, c["result"], c["tres"], c["t"], c["skin"], self.team_color, self.draw_cutscene_weather)
         elif self.view == "bat":
             self.draw_bat_view(self.bat_surface)
             bat_h = int(LOGICAL_W * BAT_H / BAT_W)
@@ -3755,6 +3780,7 @@ class Game:
                 draw_text(surf, "PERFECT PERFECT!", 640, 170, int(78 + 8 * math.sin(fx * 14)), GOLD)
             else:
                 draw_text(surf, f"HOME RUN!  {self.hr_distance} FT" if self.hr_distance else "HOME RUN!", 640, 170, 84, WHITE)
+        self.draw_cutscene_weather(surf)
         pygame.draw.rect(surf, BLACK, (0, 0, LOGICAL_W, 48))                  # cinematic bars
         pygame.draw.rect(surf, BLACK, (0, LOGICAL_H - 48, LOGICAL_W, 48))
 
@@ -3952,6 +3978,7 @@ class Game:
         self.draw_slugger_scene(scene, clamp(t, 0, SLUGGER_TIME))
 
     def scene_dive(self, scene, t):
+        WET[0] = self.weather == "Rain"
         """A ground ball up the middle: the shortstop dives, then throws to first."""
         self.blit_field_scene(scene, t * 1.0, 0.55)
         s = FIELDER_SCALE
@@ -3989,12 +4016,13 @@ class Game:
 
     def scene_close(self, scene, t, result):
         """The close-play cutscene, re-created for the gallery: the runner dives, the ball comes in, the call is made."""
+        WET[0] = self.weather == "Rain"
         arrive = 2.0
         gap = 0.5 * (1 - smooth(clamp(t / arrive, 0, 1)))
         ball_arrives = arrive - 0.15 if result == "out" else arrive + 0.2
         dist = CLOSE_BALL_RADIUS * 1.2 * (1 - smooth(clamp(t / ball_arrives, 0, 1)))
         done = t >= arrive
-        draw_close_cutscene(scene, gap, dist, result if done else None, max(0.0, t - arrive), t, self.skin, self.team_color)
+        draw_close_cutscene(scene, gap, dist, result if done else None, max(0.0, t - arrive), t, self.skin, self.team_color, self.draw_cutscene_weather)
 
     def scene_leap(self, scene, t):
         """A deep fly ball to center: the fielder leaps and makes the catch at the top of his jump."""
@@ -4201,7 +4229,19 @@ class Game:
             if self.sub_message:
                 draw_text(surf, self.sub_message, 385, 262, 16)
 
+    def draw_cutscene_weather(self, surf):
+        """The game's weather laid over a cutscene (night lights, rain, or wind streaks)."""
+        WET[0] = self.weather == "Rain"
+        self.draw_weather(surf)
+        if self.weather == "Windy":
+            w, h = surf.get_size()
+            for i in range(16):
+                y = (i * 83 + 60) % (h - 120) + 60
+                x = ((i * 191 + self.clock * (420 + 40 * (i % 4))) % (w + 300)) - 150
+                pygame.draw.line(surf, (225, 235, 245), (x, y), (x + 70 + (i % 3) * 30, y - 3), 2)
+
     def draw_weather(self, surf):
+        WET[0] = self.weather == "Rain"
         w, h = surf.get_size()
         if self.weather == "Night":
             key = (w, h, "night")
